@@ -2,6 +2,56 @@
 
 All notable changes to `homebridge` will be documented in this file. This project tries to adhere to [Semantic Versioning](http://semver.org/).
 
+## [2.8.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.8.1...v2.8.2) (2026-01-14)
+
+
+
+## [2.8.1](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.8.0...v2.8.1) (2025-03-05)
+
+
+
+# [2.8.0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.5.3...v2.8.0) (2025-01-25)
+
+
+
+## [2.5.3](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.5.2...v2.5.3) (2023-09-25)
+
+
+
+## [2.5.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.5.1...v2.5.2) (2023-09-18)
+
+
+
+## [2.5.1](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.5.0...v2.5.1) (2023-09-17)
+
+
+
+# [2.5.0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.4.5-beta1...v2.5.0) (2023-09-17)
+
+
+
+## [2.4.5-beta1](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.4.5-beta0...v2.4.5-beta1) (2023-05-29)
+
+
+
+## [2.4.5-beta0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.4.4-beta0...v2.4.5-beta0) (2023-01-16)
+
+
+
+## [2.4.4-beta0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.0.5...v2.4.4-beta0) (2023-01-04)
+
+
+
+## [2.0.5](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.0.4...v2.0.5) (2021-02-27)
+
+
+
+## [2.0.4](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v2.0.3...v2.0.4) (2021-02-20)
+
+
+
+## 2.0.1 (2021-01-09)
+
 ## [2.8.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v2.8.2) (2025-09-18)
 
 ## What's Changed
