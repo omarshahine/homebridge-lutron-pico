@@ -114,7 +114,7 @@ class PluginUiServer extends HomebridgePluginUiServer {
         value: 'homebridge-lutron-caseta-leap',
       },
     ])
-    csr.sign(keys.privateKey)
+    csr.sign(keys.privateKey as forge.pki.rsa.PrivateKey)
     const csrText = forge.pki.certificationRequestToPem(csr)
 
     let certResult
