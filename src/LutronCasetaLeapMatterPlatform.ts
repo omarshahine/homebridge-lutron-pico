@@ -7,7 +7,7 @@ import { DeviceWireResultType, LutronCasetaLeap } from './platform.js'
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js'
 
 interface MatterAccessoryFields {
-  deviceType: number
+  deviceType: number[]
   manufacturer: string
   model: string
   serialNumber: string
@@ -88,7 +88,7 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     let matterFields: MatterAccessoryFields | undefined
     if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
       matterFields = {
-        deviceType: MatterDeviceType.RemoteControl,
+        deviceType: [MatterDeviceType.RemoteControl],
         manufacturer: 'Lutron Electronics',
         model: (d.ModelNumber || d.DeviceType || 'Pico Remote').toString(),
         serialNumber: d.SerialNumber?.toString() || uuid,
