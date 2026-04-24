@@ -1,9 +1,17 @@
+// Type for Matter-required fields
 // Matter device type IDs (see CSA Device Library)
 import type { API, Logging, PlatformAccessory, PlatformConfig } from 'homebridge'
 import type { DeviceDefinition, SmartBridge } from 'lutron-leap'
 
 import { DeviceWireResultType, LutronCasetaLeap } from './platform.js'
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js'
+
+interface MatterAccessoryFields {
+  deviceType: number
+  manufacturer: string
+  model: string
+  serialNumber: string
+}
 
 enum MatterDeviceType {
   RemoteControl = 0x0016,
@@ -76,17 +84,62 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     const result = await this.wireAccessory(accessory, bridge, d)
     accessory.displayName = fullName
 
-    // Set required Matter deviceType before registration, using types
-    let deviceType: MatterDeviceType | undefined
+    // Set all required Matter fields before registration
+    let matterFields: MatterAccessoryFields | undefined
     if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
-      deviceType = MatterDeviceType.RemoteControl
+      matterFields = {
+        deviceType: MatterDeviceType.RemoteControl,
+        manufacturer: 'Lutron Electronics',
+        model: (d.ModelNumber || d.DeviceType || 'Pico Remote').toString(),
+        serialNumber: d.SerialNumber?.toString() || uuid,
+      }
+      // Use PicoRemote to generate clusters and wire up Matter event emission
+      const PicoRemote = (await import('./PicoRemote.js')).PicoRemote
+      // Pass mApi and accessory for event emission
+      const pico = new PicoRemote(this, accessory, bridge, {} as any, mApi)
+      const clusters = pico.getMatterClusters();
+      (accessory as any).clusters = clusters
+      accessory.context.clusters = clusters
+
+      // Register Matter cluster handlers for On/Off cluster
+      if (clusters.onOff) {
+        mApi.setClusterHandler(accessory, 'onOff', {
+          on: () => {
+            this.log.info('Matter On command received for Pico')
+            // Optionally: trigger Pico button press logic here
+          },
+          off: () => {
+            this.log.info('Matter Off command received for Pico')
+            // Optionally: trigger Pico button press logic here
+          },
+        })
+      }
+      // Register Matter cluster handlers for LevelControl cluster
+      if (clusters.levelControl) {
+        mApi.setClusterHandler(accessory, 'levelControl', {
+          setLevel: (level: number) => {
+            this.log.info(`Matter LevelControl setLevel command received for Pico: ${level}`)
+            // Optionally: trigger Pico Raise/Lower logic here
+          },
+        })
+      }
+
+      // Register Matter cluster handlers for Scenes cluster
+      if (clusters.scenes) {
+        mApi.setClusterHandler(accessory, 'scenes', {
+          recallScene: (sceneNumber: number) => {
+            this.log.info(`Matter Scenes recallScene command received for Pico: ${sceneNumber}`)
+            // Optionally: trigger Pico Scene button logic here
+          },
+        })
+      }
     }
     // Add more device type mappings as needed, using MatterDeviceType enum
 
-    if (deviceType !== undefined) {
+    if (matterFields) {
       // Set on both the accessory and its context for maximum compatibility
-      (accessory as any).deviceType = deviceType
-      accessory.context.deviceType = deviceType
+      Object.assign(accessory, matterFields)
+      Object.assign(accessory.context, matterFields)
     }
 
     switch (result.kind) {
