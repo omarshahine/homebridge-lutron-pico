@@ -97,7 +97,11 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
       const PicoRemote = (await import('./PicoRemote.js')).PicoRemote
       // Pass mApi and accessory for event emission
       const pico = new PicoRemote(this, accessory, bridge, {} as any, mApi)
-      const clusters = pico.getMatterClusters();
+      const clusters = pico.getMatterClusters()
+      // Remove accidental 'behaviors' property if present
+      if ('behaviors' in clusters) {
+        delete (clusters as any).behaviors
+      }
       (accessory as any).clusters = clusters
       accessory.context.clusters = clusters
 
