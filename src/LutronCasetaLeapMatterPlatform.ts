@@ -1,9 +1,17 @@
+// Type for Matter-required fields
 // Matter device type IDs (see CSA Device Library)
 import type { API, Logging, PlatformAccessory, PlatformConfig } from 'homebridge'
 import type { DeviceDefinition, SmartBridge } from 'lutron-leap'
 
 import { DeviceWireResultType, LutronCasetaLeap } from './platform.js'
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js'
+
+interface MatterAccessoryFields {
+  deviceType: number[]
+  manufacturer: string
+  model: string
+  serialNumber: string
+}
 
 enum MatterDeviceType {
   RemoteControl = 0x0016,
@@ -76,17 +84,49 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     const result = await this.wireAccessory(accessory, bridge, d)
     accessory.displayName = fullName
 
-    // Set required Matter deviceType before registration, using types
-    let deviceType: MatterDeviceType | undefined
+    // Set all required Matter fields before registration
+    let matterFields: MatterAccessoryFields | undefined
     if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
-      deviceType = MatterDeviceType.RemoteControl
+      matterFields = {
+        deviceType: [MatterDeviceType.RemoteControl],
+        manufacturer: 'Lutron Electronics',
+        model: (d.ModelNumber || d.DeviceType || 'Pico Remote').toString(),
+        serialNumber: d.SerialNumber?.toString() || uuid,
+      }
+      // Use PicoRemote to generate clusters and wire up Matter event emission
+      const PicoRemote = (await import('./PicoRemote.js')).PicoRemote
+      // Pass mApi and accessory for event emission
+      const pico = new PicoRemote(this, accessory, bridge, {} as any, mApi)
+      const clusters = pico.getMatterClusters()
+      // Deeply remove accidental 'behaviors' property from clusters, accessory, and context, handling circular refs
+      function deepDeleteBehaviors(obj: any, seen = new WeakSet()) {
+        if (!obj || typeof obj !== 'object' || seen.has(obj)) {
+          return
+        }
+        seen.add(obj)
+        if ('behaviors' in obj) {
+          delete obj.behaviors
+        }
+        for (const key of Object.keys(obj)) {
+          if (typeof obj[key] === 'object' && obj[key] !== null) {
+            deepDeleteBehaviors(obj[key], seen)
+          }
+        }
+      }
+      deepDeleteBehaviors(clusters);
+      (accessory as any).clusters = clusters
+      accessory.context.clusters = clusters
+      deepDeleteBehaviors(accessory)
+      deepDeleteBehaviors(accessory.context)
+
+      // Homebridge Matter API does not support setClusterHandler; only set clusters on accessory/context
     }
     // Add more device type mappings as needed, using MatterDeviceType enum
 
-    if (deviceType !== undefined) {
+    if (matterFields) {
       // Set on both the accessory and its context for maximum compatibility
-      (accessory as any).deviceType = deviceType
-      accessory.context.deviceType = deviceType
+      Object.assign(accessory, matterFields)
+      Object.assign(accessory.context, matterFields)
     }
 
     switch (result.kind) {

@@ -1,13 +1,3 @@
-## [3.0.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.1...v3.0.2) (2026-04-24)
-
-
-### Bug Fixes
-
-* This accessory will not be registered. ([fb3c249](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/commit/fb3c2492cdcb30b2abe58aa9368be7e410d396c2))
-
-
-
-
 # Changelog
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/).
@@ -15,14 +5,14 @@ All notable changes to this project will be documented in this file. This projec
 ## [3.0.3](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.3) (2026-04-23)
 
 ### What's Changed
-* fix: This accessory will not be registered.
+* fix: This accessory will not be registered. 
 
 **Full Changelog**: https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.2...v3.0.3
 
 ## [3.0.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.2) (2026-04-23)
 
 ### What's Changed
-* fix: This accessory will not be registered.
+* fix: This accessory will not be registered. ([fb3c249](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/commit/fb3c2492cdcb30b2abe58aa9368be7e410d396c2))
 
 **Full Changelog**: https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.1...v3.0.2
 
