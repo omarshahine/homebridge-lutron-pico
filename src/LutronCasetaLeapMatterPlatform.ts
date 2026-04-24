@@ -77,11 +77,16 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     accessory.displayName = fullName
 
     // Set required Matter deviceType before registration, using types
-    if (accessory.context.deviceType === undefined) {
-      if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
-        accessory.context.deviceType = MatterDeviceType.RemoteControl
-      }
-      // Add more device type mappings as needed, using MatterDeviceType enum
+    let deviceType: MatterDeviceType | undefined
+    if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
+      deviceType = MatterDeviceType.RemoteControl
+    }
+    // Add more device type mappings as needed, using MatterDeviceType enum
+
+    if (deviceType !== undefined) {
+      // Set on both the accessory and its context for maximum compatibility
+      (accessory as any).deviceType = deviceType
+      accessory.context.deviceType = deviceType
     }
 
     switch (result.kind) {
