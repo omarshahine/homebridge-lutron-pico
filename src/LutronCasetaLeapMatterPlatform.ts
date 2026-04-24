@@ -1,8 +1,14 @@
+// Matter device type IDs (see CSA Device Library)
 import type { API, Logging, PlatformAccessory, PlatformConfig } from 'homebridge'
 import type { DeviceDefinition, SmartBridge } from 'lutron-leap'
 
 import { DeviceWireResultType, LutronCasetaLeap } from './platform.js'
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js'
+
+enum MatterDeviceType {
+  RemoteControl = 0x0016,
+  // Add more as needed
+}
 
 /**
  * Homebridge Matter platform for the Lutron Caseta LEAP plugin.
@@ -61,12 +67,22 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     let isFromCache = true
     if (accessory === undefined) {
       isFromCache = false
-      accessory = new this.api.platformAccessory(fullName, uuid)
+      // Use the PlatformAccessory constructor from the API
+      const PlatformAccessoryCtor = this.api.platformAccessory as unknown as { new(name: string, uuid: string): PlatformAccessory }
+      accessory = new PlatformAccessoryCtor(fullName, uuid)
       this.log.debug(`Device ${fullName} not found in accessory cache (Matter mode)`)
     }
 
     const result = await this.wireAccessory(accessory, bridge, d)
     accessory.displayName = fullName
+
+    // Set required Matter deviceType before registration, using types
+    if (accessory.context.deviceType === undefined) {
+      if (typeof d.DeviceType === 'string' && d.DeviceType.toLowerCase().includes('pico')) {
+        accessory.context.deviceType = MatterDeviceType.RemoteControl
+      }
+      // Add more device type mappings as needed, using MatterDeviceType enum
+    }
 
     switch (result.kind) {
       case DeviceWireResultType.Error: {
@@ -96,4 +112,3 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
     }
   }
 }
-
