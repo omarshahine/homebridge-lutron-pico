@@ -75,9 +75,9 @@ export class ButtonTracker {
     private longPressCB: () => void,
     private log: Logging,
     private href: string,
-        clickSpeedDouble = 'default',
-        clickSpeedLong = 'default',
-        isUpDownButton = false,
+    clickSpeedDouble = 'default',
+    clickSpeedLong = 'default',
+    isUpDownButton = false,
   ) {
     log.debug(`btrk ${this.href} created speed ${clickSpeedDouble} dbl ${clickSpeedLong} long`)
 
