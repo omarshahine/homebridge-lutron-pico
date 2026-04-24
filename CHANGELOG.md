@@ -3,6 +3,30 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [3.0.3](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.3) (2026-04-23)
+
+### What's Changed
+* fix: This accessory will not be registered.
+
+**Full Changelog**: https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.2...v3.0.3
+
+## [3.0.2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.2) (2026-04-23)
+
+### What's Changed
+* fix: This accessory will not be registered.
+
+**Full Changelog**: https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.1...v3.0.2
+
+## [3.0.1](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.1) (2026-04-23)
+
+## What's Changed
+* Don’t automatically unregister on error getting device info by @dfct in https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/pull/207
+
+## New Contributors
+* @dfct made their first contribution in https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/pull/207
+
+**Full Changelog**: https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.0...v3.0.1
+
 ## [3.0.0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/releases/tag/v3.0.0) (2026-04-23)
 
 ### Major Changes
