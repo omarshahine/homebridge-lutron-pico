@@ -102,13 +102,19 @@ const BUTTON_MAP = new Map<string, Map<number, { label: string, index: number, i
 export class PicoRemote {
   private services: Map<string, Service> = new Map()
   private trackers: Map<string, ButtonTracker> = new Map()
+  // Map button href to ButtonNumber for event lookup
+  private hrefToButtonNumber: Map<string, number> = new Map()
 
+  private matterApi?: any
   constructor(
     private readonly platform: LutronCasetaLeap,
     private readonly accessory: PlatformAccessory,
     private readonly bridge: SmartBridge,
     private readonly options: GlobalOptions,
-  ) { }
+    matterApi?: any,
+  ) {
+    this.matterApi = matterApi
+  }
 
   public async initialize(): Promise<DeviceWireResult> {
     const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
@@ -125,8 +131,8 @@ export class PicoRemote {
       )
 
     const label_svc
-            = this.accessory.getService(this.platform.api.hap.Service.ServiceLabel)
-              || this.accessory.addService(this.platform.api.hap.Service.ServiceLabel)
+      = this.accessory.getService(this.platform.api.hap.Service.ServiceLabel)
+        || this.accessory.addService(this.platform.api.hap.Service.ServiceLabel)
     label_svc.setCharacteristic(
       this.platform.api.hap.Characteristic.ServiceLabelNamespace,
       this.platform.api.hap.Characteristic.ServiceLabelNamespace.ARABIC_NUMERALS, // ha ha
@@ -187,6 +193,9 @@ export class PicoRemote {
         }
       }
 
+      // Map href to ButtonNumber for event lookup
+      this.hrefToButtonNumber.set(button.href, button.ButtonNumber)
+
       this.platform.log.debug(
         `setting up ${button.href} named ${button.Name} numbered ${button.ButtonNumber} as ${inspect(
           alias,
@@ -196,12 +205,12 @@ export class PicoRemote {
       )
 
       const service
-                = this.accessory.getServiceById(this.platform.api.hap.Service.StatelessProgrammableSwitch, alias.label)
-                  || this.accessory.addService(
-                    this.platform.api.hap.Service.StatelessProgrammableSwitch,
-                    button.Name,
-                    alias.label,
-                  )
+        = this.accessory.getServiceById(this.platform.api.hap.Service.StatelessProgrammableSwitch, alias.label)
+          || this.accessory.addService(
+            this.platform.api.hap.Service.StatelessProgrammableSwitch,
+            button.Name,
+            alias.label,
+          )
       service.addLinkedService(label_svc)
 
       service.setCharacteristic(this.platform.api.hap.Characteristic.Name, alias.label)
@@ -305,11 +314,51 @@ export class PicoRemote {
 
   handleEvent(response: Response): void {
     const evt = (response.Body! as OneButtonStatusEvent).ButtonStatus
+    // Look up ButtonNumber from href
+    const buttonHref = evt.Button.href
+    const buttonNumber = this.hrefToButtonNumber.get(buttonHref)
+    // Emit Matter cluster events for LevelControl and Scenes clusters if present
+    if (this.matterApi && (this.accessory as any).clusters && buttonNumber !== undefined) {
+      const dentry = BUTTON_MAP.get(this.accessory.context.device.DeviceType)
+      if (dentry) {
+        const alias = dentry.get(buttonNumber)
+        if (alias) {
+          // LevelControl: Raise/Lower
+          if (alias.label.toLowerCase() === 'raise') {
+            this.matterApi.emitClusterEvent(this.accessory, 'levelControl', 'raise')
+          } else if (alias.label.toLowerCase() === 'lower') {
+            this.matterApi.emitClusterEvent(this.accessory, 'levelControl', 'lower')
+          }
+          // Scenes: Button 1-4
+          if (alias.label.toLowerCase().startsWith('button ')) {
+            const sceneNum = Number.parseInt(alias.label.split(' ')[1], 10)
+            if (!Number.isNaN(sceneNum)) {
+              this.matterApi.emitClusterEvent(this.accessory, 'scenes', 'recallScene', sceneNum)
+            }
+          }
+        }
+      }
+    }
     const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
     this.platform.log.info(
       `Button ${evt.Button.href} on Pico remote ${fullName} got action ${evt.ButtonEvent.EventType}`,
     )
     this.trackers.get(evt.Button.href)!.update(evt.ButtonEvent.EventType)
+
+    // Emit Matter cluster event for On/Off cluster if present
+    if (this.matterApi && (this.accessory as any).clusters?.onOff && buttonNumber !== undefined) {
+      const dentry = BUTTON_MAP.get(this.accessory.context.device.DeviceType)
+      if (dentry) {
+        const alias = dentry.get(buttonNumber)
+        if (alias) {
+          if (alias.label.toLowerCase() === 'on') {
+            this.matterApi.emitClusterEvent(this.accessory, 'onOff', 'on')
+          } else if (alias.label.toLowerCase() === 'off') {
+            this.matterApi.emitClusterEvent(this.accessory, 'onOff', 'off')
+          }
+        }
+      }
+    }
   }
 
   handleUnsolicited(response: Response): void {
@@ -320,5 +369,37 @@ export class PicoRemote {
         this.handleEvent(response)
       }
     }
+  }
+
+  /**
+   * Returns a Matter clusters object for this Pico remote, based on its button map.
+   */
+  public getMatterClusters(): Record<string, any> {
+    const type = this.accessory.context.device.DeviceType
+    const dentry = BUTTON_MAP.get(type)
+    if (!dentry) {
+      return {}
+    }
+    // Gather all button labels for this remote
+    const buttonLabels = Array.from(dentry.values()).map(v => v.label.toLowerCase())
+    const clusters: Record<string, any> = {}
+    // On/Off cluster for remotes with On/Off buttons
+    if (buttonLabels.includes('on') && buttonLabels.includes('off')) {
+      clusters.onOff = { onOff: false }
+    }
+    // LevelControl cluster for Raise/Lower
+    if (buttonLabels.includes('raise') && buttonLabels.includes('lower')) {
+      clusters.levelControl = { currentLevel: 0, minLevel: 0, maxLevel: 254 }
+    }
+    // Scenes cluster for 4-button scene/zone remotes
+    if (type.includes('4ButtonScene') || type.includes('4ButtonZone')) {
+      clusters.scenes = { sceneCount: 4 }
+    }
+    // 4Button2Group: treat as two on/off pairs
+    if (type.includes('4Button2Group')) {
+      clusters.onOff = { onOff: false }
+      clusters.onOff2 = { onOff: false }
+    }
+    return clusters
   }
 }
