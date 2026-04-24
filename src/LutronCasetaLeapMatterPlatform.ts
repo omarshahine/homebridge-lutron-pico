@@ -101,38 +101,7 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
       (accessory as any).clusters = clusters
       accessory.context.clusters = clusters
 
-      // Register Matter cluster handlers for On/Off cluster
-      if (clusters.onOff) {
-        mApi.setClusterHandler(accessory, 'onOff', {
-          on: () => {
-            this.log.info('Matter On command received for Pico')
-            // Optionally: trigger Pico button press logic here
-          },
-          off: () => {
-            this.log.info('Matter Off command received for Pico')
-            // Optionally: trigger Pico button press logic here
-          },
-        })
-      }
-      // Register Matter cluster handlers for LevelControl cluster
-      if (clusters.levelControl) {
-        mApi.setClusterHandler(accessory, 'levelControl', {
-          setLevel: (level: number) => {
-            this.log.info(`Matter LevelControl setLevel command received for Pico: ${level}`)
-            // Optionally: trigger Pico Raise/Lower logic here
-          },
-        })
-      }
-
-      // Register Matter cluster handlers for Scenes cluster
-      if (clusters.scenes) {
-        mApi.setClusterHandler(accessory, 'scenes', {
-          recallScene: (sceneNumber: number) => {
-            this.log.info(`Matter Scenes recallScene command received for Pico: ${sceneNumber}`)
-            // Optionally: trigger Pico Scene button logic here
-          },
-        })
-      }
+      // Homebridge Matter API does not support setClusterHandler; only set clusters on accessory/context
     }
     // Add more device type mappings as needed, using MatterDeviceType enum
 
