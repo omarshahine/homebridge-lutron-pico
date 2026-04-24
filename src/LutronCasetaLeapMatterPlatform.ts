@@ -98,18 +98,25 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
       // Pass mApi and accessory for event emission
       const pico = new PicoRemote(this, accessory, bridge, {} as any, mApi)
       const clusters = pico.getMatterClusters()
-      // Remove accidental 'behaviors' property if present on clusters, accessory, or context
-      if ('behaviors' in clusters) {
-        delete (clusters as any).behaviors
+      // Deeply remove accidental 'behaviors' property from clusters, accessory, and context
+      function deepDeleteBehaviors(obj: any) {
+        if (!obj || typeof obj !== 'object') {
+          return
+        }
+        if ('behaviors' in obj) {
+          delete obj.behaviors
+        }
+        for (const key of Object.keys(obj)) {
+          if (typeof obj[key] === 'object' && obj[key] !== null) {
+            deepDeleteBehaviors(obj[key])
+          }
+        }
       }
+      deepDeleteBehaviors(clusters);
       (accessory as any).clusters = clusters
       accessory.context.clusters = clusters
-      if ('behaviors' in accessory) {
-        delete (accessory as any).behaviors
-      }
-      if ('behaviors' in accessory.context) {
-        delete (accessory.context as any).behaviors
-      }
+      deepDeleteBehaviors(accessory)
+      deepDeleteBehaviors(accessory.context)
 
       // Homebridge Matter API does not support setClusterHandler; only set clusters on accessory/context
     }
