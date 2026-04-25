@@ -98,17 +98,18 @@ export class LutronCasetaLeapMatterPlatform extends LutronCasetaLeap {
       // Pass mApi and accessory for event emission
       const pico = new PicoRemote(this, accessory, bridge, {} as any, mApi)
       const clusters = pico.getMatterClusters()
-      // Deeply remove accidental 'behaviors' property from clusters, accessory, and context
-      function deepDeleteBehaviors(obj: any) {
-        if (!obj || typeof obj !== 'object') {
+      // Deeply remove accidental 'behaviors' property from clusters, accessory, and context, handling circular refs
+      function deepDeleteBehaviors(obj: any, seen = new WeakSet()) {
+        if (!obj || typeof obj !== 'object' || seen.has(obj)) {
           return
         }
+        seen.add(obj)
         if ('behaviors' in obj) {
           delete obj.behaviors
         }
         for (const key of Object.keys(obj)) {
           if (typeof obj[key] === 'object' && obj[key] !== null) {
-            deepDeleteBehaviors(obj[key])
+            deepDeleteBehaviors(obj[key], seen)
           }
         }
       }
