@@ -1,3 +1,12 @@
+## [3.0.5](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.4...v3.0.5) (2026-04-27)
+
+
+### Bug Fixes
+
+* cached accessory loss on Skipped, listener leak, inventory retry ([#227](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/issues/227)) ([4856be2](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/commit/4856be2accc95aec4a1cf778b4bef1610540ee0e))
+
+
+
 ## [3.0.4](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.1...v3.0.4) (2026-04-25)
 
 
