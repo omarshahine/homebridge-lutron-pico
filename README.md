@@ -1,247 +1,68 @@
-<span align="center">
+# homebridge-lutron-pico
 
-<a href="https://github.com/homebridge/verified/blob/master/verified-plugins.json"><img alt="homebridge-verified" src="https://raw.githubusercontent.com/homebridge/plugins/latest/icons/homebridge-lutron-caseta-leap.png?sanitize=true" width="150px"></a>
+A focused Homebridge plugin that exposes **only** Lutron Pico remotes to HomeKit — and **only** the picos that are not already wired to anything in the Lutron Caséta app.
 
-# LutronCasetaLeap
+Forked from [`homebridge-lutron-caseta-leap`](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap). Everything not related to Pico remotes (Serena blinds, occupancy sensors, the experimental Matter platform) has been ripped out, the association filter has been tightened, and press detection has been simplified to single-press only for maximum reliability.
 
-<a href="https://www.npmjs.com/package/@homebridge-plugins/homebridge-lutron-caseta-leap"><img title="npm version" src="https://badgen.net/npm/v/@homebridge-plugins/homebridge-lutron-caseta-leap?icon=npm&label" ></a>
-<a href="https://www.npmjs.com/package/@homebridge-plugins/homebridge-lutron-caseta-leap"><img title="npm downloads" src="https://badgen.net/npm/dt/@homebridge-plugins/homebridge-lutron-caseta-leap?label=downloads" ></a>
-<a href="https://discord.gg/8fpZA4S"><img title="discord-lutron" src="https://badgen.net/discord/online-members/8fpZA4S?icon=discord&label=discord" ></a>
-<a href="https://paypal.me/donavanbecker"><img title="donate" src="https://badgen.net/badge/donate/paypal/yellow" ></a>
-<a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img title="donate" src="https://badgen.net/badge/homebridge/scoped/purple" ></a>
+## Why this fork?
 
-</p>
+I had two recurring problems with the upstream plugin:
 
-</span>
+1. **HomeKit duplicates.** Picos that I had already configured in the Lutron app (controlling lights, dimmers, scenes) still showed up in HomeKit, requiring me to manually disable each one. The upstream filter only checked `AffectedZones !== undefined`, which is effectively always true on the wire even for empty arrays, and never caught picos bound to scenes via `ProgrammingModel`.
 
-This is a plugin that interfaces between Homebridge (and HomeKit) and the [Lutron Caséta Smart Bridge](https://www.casetawireless.com/products/expansion-kits-and-smart-bridge). Specifically, this adds support for:
+2. **Missed button presses.** The press state machine occasionally dropped clicks, especially after a connection blip. The upstream plugin tries to detect single / double / long presses by tracking `Press → Release → Press` timing, and any out-of-order event would silently reset the state machine.
 
-- [Serena Smart Wood Blinds](https://www.serenashades.com) (optionally),
-- [Pico Remotes](https://www.lutron.com/en-US/Products/Pages/Components/PicoWirelessController/Models.aspx)
-- Caseta Occupancy Sensors
+This fork solves both:
 
-Because HomeKit control for dimmers and switches, etc, are natively supported by the Smart Bridge, this plugin doesn't implement them. If you want to help out and add support, please see the [To-do and contributions](#to-do-and-contributions) section at the bottom of this document. Serena Smart Wood Blinds support in this plugin can be disabled.
+- **Strict association filter.** A Pico is only exposed to HomeKit if every button group has zero `AffectedZones` **and** every button has `ProgrammingModelType === 'Unknown'`. If you've wired a button to anything in the Lutron app, the plugin leaves it alone.
+- **Single-press only.** Every `Press` event from the bridge fires a `SINGLE_PRESS` HomeKit event. No state machine, no timers, no missed clicks. You lose double / long press, but you can layer those on top in HomeKit automations if you really need them — and you stop dropping single presses, which is what mattered most.
 
-This plugin makes use of the [lutron-leap-js](https://github.com/thenewwazoo/lutron-leap-js) library, which implements the Lutron LEAP protocol, used by the Lutron mobile apps and third-party integrations. It has been tested with the non-Pro and Pro bridges, and may also be able to work with RA2 (but has not been tested).
+## Supported Pico variants
 
-## 🧧 Support and Donations
+- Pico2Button
+- Pico2ButtonRaiseLower
+- Pico3Button
+- Pico3ButtonRaiseLower
+- Pico4Button2Group
+- Pico4ButtonScene
+- Pico4ButtonZone
+- PaddleSwitchPico
 
-I've been asked more than once how appreciative users can support my development or make donations. I built this plugin to scratch an itch. Further development isn't needed for my own personal use cases, but support to enable me to buy and test other equipment is greatly appreciated. So far, generous users have provided me with funds and equipment that has resulted in Pico and occupancy sensor support. Thank you all so much!
+## Installation
 
-<p align="center">
-<a href="https://www.paypal.com/donate/?business=TPDRZ5F2GRK32&no_recurring=0&currency_code=USD"><img src="assets/PP_Acceptance_Marks_for_LogoCenter_76x48.png" border="0" align="center" /></a>&nbsp;&nbsp;&nbsp;
-<a href="https://cash.app/$thenewazoo"><img src="assets/cash_app_dollar_icon.png" width="50" height="50" align="center" /></a>&nbsp;&nbsp;&nbsp;
-<a href="https://venmo.com/?txn=pay&audience=public&recipients=venmo@optimaltour.us"><img src="assets/Venmo_Monogram.png" align="center" /></a>
-</p>
-
-## 🏗 Installation and Setup
-
-This plugin requires [`homebridge-config-ui-x`](https://github.com/oznu/homebridge-config-ui-x#readme) for initial setup. Install the plugin using the UI.
-
-Once that's done, open the configuration screen:
-
-![view of all installed plugins](assets/plugin_top_view.png)
-
-Click "Settings" for this plugin. You should see your bridges listed. I only have one, but if you have more, they'll appear here. They are discovered automatically.
-
-![view of discovered bridges](assets/unassociated.png)
-
-Click on "Associate", and then press the button on the back of your Smart Bridge 2 device within 30 seconds. The UI will update, and if all goes well, you will see:
-
-![view of a single successfully-connected bridge](assets/associated.png)
-
-Click the save button at the bottom, and you're done.
-
-### Options
-
-#### Exclude Picos...
-
-By default, all known Pico remotes are shown in the Home app. This means their functionality is duplicated, in a sense. Configuration in Homekit has no effect on operation with paired accessories, or anything else in the Lutron app. With no further action, you can use them (HomeKit and the Lutron App) both simultaneously.
-
-_If you want to only show Picos that do not have associations_ in the Lutron app, check the configuration box for "Exclude Pico remotes...". This will hide them from HomeKit. Please note that hiding them is not a destructive operation, and you can un-hide them in the future and (I _think..._) you won't lose their setup when they come back.
-
-#### Disable support for Serena...
-
-When this plugin was written, Lutron did not support the Serena Tilt-Only Wood Blinds in HomeKit. They have since added that support. If you do not disable support in the plugin, your blinds will show up twice. _This is the default behavior_ in order not to break existing configurations, but you _probably_ want to turn on this option.
-
-#### Double- and long-press speed
-
-This lets you set the speed with which you must click buttons in order to trigger a double- or a long-press of a button. The default should be comfortable for most modern computer users. My hope is that slow and fast are better for some users. If you find they do not work for you, please let me know!
-
-These features can also be disabled individually in the settings. This can improve responsiveness to the remaining types of presses. **The configuration options in HomeKit do not change, but the plug-in will ignore disabled press types.**
-
-## 🏄 User Information
-
-### Adding and Removing Devices
-
-In order to add a device to the hub, you must use the Lutron app to pair the device. This plugin will re-scan the known devices 30 seconds after you announce the device. This means you must **complete adding the device in less than 30 seconds** in order for the device to appear in HomeKit without restarting the plugin. If you _do_ miss that deadline, don't worry: the device will appear after you restart Homebridge.
-
-To remove a device from Homebridge after you're removed it from the Smart Bridge 2, you must [delete the cached accessory out of Homebridge manually](https://github.com/oznu/homebridge-config-ui-x/issues/525).
-
-### Pico Remote Button Mapping
-
-Pico buttons are mapped according to the following diagram:
-
-![iOS Home App and Eve app screenshots showing arrows pointing from the button entries in the apps to the physical buttons on a picture of a pico remote](assets/buttons_map.png)
-
-The iOS Home app doesn't actually show button names (e.g. "On"), but only shows "Button 1". Other, better, iOS Homekit apps do, though. In any case, buttons are mapped from top-to-bottom. The top-most physical button is button 1, and is shown at the top of the list in the app.
-
-I don't own one of every remote type, so I've had to make guesses about the other supported remotes, and defer implementing some others. Currently supported are:
-
-- [2 Button](https://www.lutron.com/en-US/pages/SupportCenter/support.aspx?modelNumber=PJ2-2B&Section=Documents)
-- [2-Button with raise/lower](https://www.lutron.com/en-US/pages/SupportCenter/support.aspx?modelNumber=PJ2-2BRL&Section=Documents)
-- [3-Button](https://www.lutron.com/en-US/pages/SupportCenter/support.aspx?modelNumber=PJ2-3B&Section=Documents) (_untested_)
-- [3-Button with raise/lower](https://www.lutron.com/en-US/pages/SupportCenter/support.aspx?modelNumber=PJ2-3BRL&Section=Documents)
-- [3-Button Shade with raise/lower](https://www.lutron.com/TechnicalDocumentLibrary/369612.pdf) (`-S01`)
-- [4-Button](https://www.lutron.com/TechnicalDocumentLibrary/369847.pdf) (note only `-L01` model is supported)
-- [4-Button Scene Keypad](https://www.lutron.com/TechnicalDocumentLibrary/3691066_eng.pdf) (`-P01`)
-- [4-Button Dual Group](https://www.lutron.com/TechnicalDocumentLibrary/369847.pdf) (`-L21`)
-
-I'd love to have complete, tested support of all remote types. If you have hardware that is partially- or un-supported and, adding support is fast and easy. I would also be happy to add support for hardware that is provided to me.
-
-## ⚠️ Support and Troubleshooting
-
-If you need find a bug, need help with this plugin, or have questions, the best way to reach me is via a Github Issue. Please don't be shy about opening one. You can also reach me via the email address in my Github profile.
-
-This plugin doesn't often change, but when I add big features or make big changes, I will occasionally join the [`#lutron-caseta-leap`](https://discord.com/channels/432663330281226270/927991341923852389) channel on the [Homebridge Discord server](https://discord.gg/RcV7fa8).
-
-### Something weird is happening / The plugin is running slowly / Devices aren't appearing
-
-If the plugin is generally misbehaving, users have reported success in running this plugin in a [child bridge](https://github.com/homebridge/homebridge/wiki/Child-Bridges). Doing this will require adding the bridge as a separate device and re-configuring your devices, which may or may not be acceptable. [This issue](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/issues/96) has some steps to accomplishing that.
-
-Why does this change things? To be honest, I don't really know (and not knowing really bugs me). I've tried my best to follow best practices in designing this plugin but it seems to help sometimes. :(
-
-### My bridge doesn't appear in the configuration UI
-
-Bridge discovery works using mDNS aka Bonjour aka zeroconf. This means that your Homebridge server sends a special message that's sent to every computer on the local network. If your bridge can't hear that packet for some reason, discovery won't work.
-
-Why can't your bridge hear that packet? There are, unfortunately, an infinite number of possible reasons. Some keyword soup that might match something in your network configuration: broadcast relay repeat forwarding.
-
-Sadly, that's all the support I can offer, as the particular problems are impossible to diagnose without access to your network. My best advice is to keep the bridge as close, network-wise, to the Homebridge server as possible. Good luck, and I'm sorry you're having problems.
-
-## 🪲 Enabling debugging
-
-In order to enable debugging, set the DEBUG environment variable in the Homebridge UI to `leap:*`. This will make this plugin, and its main library `lutron-leap-js`, noisier. Logging at this level is required for diagnosis and new hardware support.
-
-To do this, use the drop-down menu and click on "Homebridge Settings":
-
-![picture of the Homebridge UI, with the settings menu expanded](assets/menu_dropdown.png)
-
-Then, enter `leap:*` in the DEBUG field:
-
-![the Homebridge settings UI, with the DEBUG field filled](assets/debug_set.png)
-
-Then, restart Homebridge.
-
-Note that enabling DEBUG logging increases the amount of log information _greatly_. This can mean other informational messages are drowned out. (Un)Fortunately, the log file is limited to 1 megabyte, so forgetting to turn it off won't mean that you fill your hard disk, but I do recommend disabling it after you're done collecting data.
-
-## 📝 To-do and contributions
-
-The following items are on my wishlist:
-
-- Extend the Serena blind support to enable the tilt characteristic directly (in addition to faking lift w/ tilt)
-- Add/validate support for RA2 bridges (would require hardware donation)
-
-I welcome contributions! I wrote this to scratch an itch (no Serena wood blind support), but would be fine with additional devices. To add a device:
-
-- Add a case to `LutronCasetaLeap.configureAccessory` and `handleBridgeDiscovery` for your new device type.
-- Add a class for your device. The constructor should wire up event handlers and manage services and characteristics.
-- Add relevant methods to the [`SmartBridge`](https://github.com/thenewwazoo/lutron-leap-js/blob/main/src/SmartBridge.ts) class in the `lutron-leap-js` project to control the device. These methods should construct command requests.
-- Add an "unsolicited events" and/or "subscribed event" handler in your new device class to update itself when new information arrives from the bridge, and to update characteristic values.
-
-## 🛠 Development setup
-
-(rough notes)
-
-- Check this out
-- Check out the lutron-leap-js repo
-- Make changes there and `npm run build` it
-- `npm install ../lutron-leap-js`
-- Make changes here
-- `rm ~/.homebridge/accessories/cachedAccessories; DEBUG='leap:*,HAP-NodeJS:Accessory' npm run watch`
-- `npm run lint`
-
-## 💨 Legacy Configuration
-
-> :warning: **This only applies if the UI doesn't work for you**: If that's the case, please file a ticket too.
-
-### Get your bridge ID
-
-The bridge ID is the serial number, and is printed on the underside of the bridge, indicated here in green:
-
-![picture of the underside of a bridge, showing the sticker with the ID on it](assets/bridge.png)
-
-### Get your bridge credentials
-
-The easiest way is to use the [`get_lutron_cert.py`](https://github.com/gurumitts/pylutron-caseta/blob/dev/get_lutron_cert.py) script that comes with the [`pylutron-caseta`](https://github.com/gurumitts/pylutron-caseta) project, without which this would not have been possible.
-
-_NOTE_: these instructions require Python 3, which you may need to [install it yourself](https://www.python.org/downloads/).
-
-_NOTE_: these instructions may be out of date! If this doesn't work, please read the script itself.
-
-To use the script, you'll want to check out the repo:
-
-```
-git clone https://github.com/gurumitts/pylutron-caseta.git && cd pylutron-caseta
+```sh
+npm install -g homebridge-lutron-pico
 ```
 
-Then, create a venv and install the depedencies:
+Then add the platform via the Homebridge config UI. The plugin uses the same `LEAP` pairing flow as the upstream plugin — the bundled custom UI walks you through associating each bridge.
 
-```
-python3 -m venv env
-. env/bin/activate
-pip install pyOpenSSL==19.1.0
-pip install .
-```
-
-Then run the helper script:
-
-```
-python get_lutron_cert.py
-```
-
-Each file corresponds to a configuration item:
-
-- `caseta-bridge.crt` => CA certificate
-- `caseta.key` => Private key
-- `caseta.crt` => Signed certificate
-
-## Legacy Configuration File
-
-Each bridge on your network that you wish to control needs its own configuration entry.
-
-### Using `homebridge-config-ui-x`
-
-If you're using the GUI, you'll want to fill out the form, copying and pasting in the appropriate fields:
-
-![a screenshot of the configuration UI, with fields filled with the contents of certificate files](assets/config.png)
-
-The UI will handle multi-line input, so just paste it in.
-
-Click the "ADD SECRETS" button to add additional bridges.
-
-### Using `config.json`
-
-The shape of the configuration is:
+## Configuration
 
 ```json
 {
-  "platform": "LutronCasetaLeap",
-  "options": {
-    "filterPico": false,
-    "filterBlinds": false,
-    "clickSpeedLong": "default",
-    "clickSpeedDouble": "default"
-  },
-  "secrets": [
+  "platforms": [
     {
-      "bridgeid": "0a1b2c3d",
-      "ca": "-----BEGIN CERTIFICATE-----\nMII...",
-      "key": "-----BEGIN PRIVATE KEY-----\nMII...",
-      "cert": "-----BEGIN CERTIFICATE-----\nMII..."
+      "platform": "LutronPico",
+      "name": "Lutron Pico",
+      "secrets": [
+        {
+          "bridgeid": "ABCDEF12",
+          "ca": "-----BEGIN CERTIFICATE-----...",
+          "key": "-----BEGIN PRIVATE KEY-----...",
+          "cert": "-----BEGIN CERTIFICATE-----..."
+        }
+      ]
     }
   ]
 }
 ```
 
-The authn strings are newline-escaped versions of the files you generated.
+There are no other options. Filter behavior is always-on; non-Pico devices and associated picos are always skipped.
+
+## Credits
+
+All the heavy LEAP-protocol lifting comes from [`lutron-leap-js`](https://github.com/thenewwazoo/lutron-leap-js) and the original [`homebridge-lutron-caseta-leap`](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap) maintainers. This is just a stripped-down opinionated fork.
+
+## License
+
+Apache-2.0 (inherited from the upstream project).

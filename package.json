@@ -1,24 +1,24 @@
 {
-  "name": "@homebridge-plugins/homebridge-lutron-caseta-leap",
-  "displayName": "Lutron Caseta LEAP",
+  "name": "homebridge-lutron-pico",
+  "displayName": "Lutron Pico",
   "type": "module",
-  "version": "3.0.4",
-  "description": "Support for the Lutron Caseta Smart Bridge 2",
+  "version": "1.0.0",
+  "description": "Homebridge plugin that exposes only unassociated Lutron Pico remotes to HomeKit. Forked from homebridge-lutron-caseta-leap.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/homebridge-plugins/homebridge-lutron-caseta-leap.git"
+    "url": "git://github.com/omarshahine/homebridge-lutron-pico.git"
   },
   "bugs": {
-    "url": "https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/issues"
+    "url": "https://github.com/omarshahine/homebridge-lutron-pico/issues"
   },
   "keywords": [
     "homebridge-plugin",
     "lutron",
     "caseta",
+    "pico",
     "lutron-leap",
-    "lutron-caseta",
-    "lutron-smart-bridge"
+    "lutron-caseta"
   ],
   "main": "dist/index.js",
   "engines": {
@@ -32,14 +32,11 @@
     "watch": "npm run build && npm run plugin-ui && npm link && nodemon",
     "plugin-ui": "rsync ./src/homebridge-ui/public/index.html ./dist/homebridge-ui/public/",
     "build": "npm run clean && tsc && npm run plugin-ui",
-    "prepublishOnly": "npm run lint && npm run build && npm run plugin-ui && npm run docs && npm run docs:lint",
+    "prepublishOnly": "npm run lint && npm run build && npm run plugin-ui",
     "postpublish": "npm run clean && npm ci",
     "clean": "shx rm -rf ./dist",
     "test": "vitest run",
-    "test:watch": "vitest watch",
-    "test-coverage": "npm run test -- --coverage",
-    "docs": "typedoc",
-    "docs:lint": "typedoc --emit none --treatWarningsAsErrors"
+    "test:watch": "vitest watch"
   },
   "publishConfig": {
     "access": "public"
@@ -61,7 +58,6 @@
     "nodemon": "^3.1.14",
     "shx": "^0.4.0",
     "ts-node": "^10.9.2",
-    "typedoc": "^0.28.19",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
   }

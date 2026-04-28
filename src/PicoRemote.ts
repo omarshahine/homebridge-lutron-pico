@@ -1,123 +1,112 @@
-import type { Characteristic, PlatformAccessory, Service } from 'homebridge'
-import type { ButtonDefinition, OneButtonStatusEvent, Response, SmartBridge } from 'lutron-leap'
+import type { PlatformAccessory, Service } from 'homebridge'
+import type { ButtonDefinition, ButtonGroupDefinition, OneButtonStatusEvent, Response, SmartBridge } from 'lutron-leap'
 
-import type { DeviceWireResult, GlobalOptions, LutronCasetaLeap } from './platform.js'
-
-import { inspect } from 'node:util'
+import type { DeviceWireResult, LutronPicoPlatform } from './platform.js'
 
 import { ExceptionDetail } from 'lutron-leap'
 
-import { ButtonTracker } from './ButtonState.js'
+import { picoAssociation } from './picoFilter.js'
 import { DeviceWireResultType } from './platform.js'
 
-// This maps DeviceType and ButtonNumber to human-readable labels and
-// ServiceLabelIndex values. n.b. the labels are not shown in Apple's Home app,
-// but are shown in other apps. The index value determines the order that
-// buttons are shown in the Home app. They're ordered top-to-bottom (as they
-// appear on the physical remote) in this map.
-//
-// [
-//     $DeviceType,
-//     new Map([
-//         [$ButtonNumber, { label: '...', index: ... }],
-//         ...
-//     ]),
-// ]
-const BUTTON_MAP = new Map<string, Map<number, { label: string, index: number, isUpDown: boolean }>>([
-  [
-    'Pico2Button',
-    new Map([
-      [0, { label: 'On', index: 1, isUpDown: false }],
-      [2, { label: 'Off', index: 2, isUpDown: false }],
-    ]),
-  ],
-  [
-    'Pico2ButtonRaiseLower',
-    new Map([
-      [0, { label: 'On', index: 1, isUpDown: false }],
-      [2, { label: 'Off', index: 4, isUpDown: false }],
-      [3, { label: 'Raise', index: 2, isUpDown: true }],
-      [4, { label: 'Lower', index: 3, isUpDown: true }],
-    ]),
-  ],
-  [
-    'Pico3Button',
-    new Map([
-      [0, { label: 'On', index: 1, isUpDown: false }],
-      [1, { label: 'Center', index: 2, isUpDown: false }],
-      [2, { label: 'Off', index: 3, isUpDown: false }],
-    ]),
-  ],
-  [
-    'Pico3ButtonRaiseLower',
-    new Map([
-      [0, { label: 'On', index: 1, isUpDown: false }],
-      [1, { label: 'Center', index: 3, isUpDown: false }],
-      [2, { label: 'Off', index: 5, isUpDown: false }],
-      [3, { label: 'Raise', index: 2, isUpDown: true }],
-      [4, { label: 'Lower', index: 4, isUpDown: true }],
-    ]),
-  ],
-  [
-    'Pico4Button2Group',
-    new Map([
-      [1, { label: 'Group 1 On', index: 1, isUpDown: false }],
-      [2, { label: 'Group 1 Off', index: 2, isUpDown: false }],
-      [3, { label: 'Group 2 On', index: 3, isUpDown: false }],
-      [4, { label: 'Group 2 Off', index: 4, isUpDown: false }],
-    ]),
-  ],
-  [
-    'Pico4ButtonScene',
-    new Map([
-      [1, { label: 'Button 1', index: 1, isUpDown: false }],
-      [2, { label: 'Button 2', index: 2, isUpDown: false }],
-      [3, { label: 'Button 3', index: 3, isUpDown: false }],
-      [4, { label: 'Button 4', index: 4, isUpDown: false }],
-    ]),
-  ],
-  [
-    'Pico4ButtonZone',
-    new Map([
-      [1, { label: 'Button 1', index: 1, isUpDown: false }],
-      [2, { label: 'Button 2', index: 2, isUpDown: false }],
-      [3, { label: 'Button 3', index: 3, isUpDown: false }],
-      [4, { label: 'Button 4', index: 4, isUpDown: false }],
-    ]),
-  ],
-  [
-    'PaddleSwitchPico',
-    new Map([
-      [0, { label: 'On', index: 1, isUpDown: false }],
-      [2, { label: 'Off', index: 2, isUpDown: false }],
-    ]),
-  ],
-  // TODO
-  /*
-    ['Pico4Button', new Map([
-    ])]
-   */
+// DeviceType -> ButtonNumber -> human-readable label and stable order in
+// Apple's Home app. Index orders the buttons top-to-bottom on the physical
+// remote.
+const BUTTON_MAP = new Map<string, Map<number, { label: string, index: number }>>([
+  ['Pico2Button', new Map([
+    [0, { label: 'On', index: 1 }],
+    [2, { label: 'Off', index: 2 }],
+  ])],
+  ['Pico2ButtonRaiseLower', new Map([
+    [0, { label: 'On', index: 1 }],
+    [2, { label: 'Off', index: 4 }],
+    [3, { label: 'Raise', index: 2 }],
+    [4, { label: 'Lower', index: 3 }],
+  ])],
+  ['Pico3Button', new Map([
+    [0, { label: 'On', index: 1 }],
+    [1, { label: 'Center', index: 2 }],
+    [2, { label: 'Off', index: 3 }],
+  ])],
+  ['Pico3ButtonRaiseLower', new Map([
+    [0, { label: 'On', index: 1 }],
+    [1, { label: 'Center', index: 3 }],
+    [2, { label: 'Off', index: 5 }],
+    [3, { label: 'Raise', index: 2 }],
+    [4, { label: 'Lower', index: 4 }],
+  ])],
+  ['Pico4Button2Group', new Map([
+    [1, { label: 'Group 1 On', index: 1 }],
+    [2, { label: 'Group 1 Off', index: 2 }],
+    [3, { label: 'Group 2 On', index: 3 }],
+    [4, { label: 'Group 2 Off', index: 4 }],
+  ])],
+  ['Pico4ButtonScene', new Map([
+    [1, { label: 'Button 1', index: 1 }],
+    [2, { label: 'Button 2', index: 2 }],
+    [3, { label: 'Button 3', index: 3 }],
+    [4, { label: 'Button 4', index: 4 }],
+  ])],
+  ['Pico4ButtonZone', new Map([
+    [1, { label: 'Button 1', index: 1 }],
+    [2, { label: 'Button 2', index: 2 }],
+    [3, { label: 'Button 3', index: 3 }],
+    [4, { label: 'Button 4', index: 4 }],
+  ])],
+  ['PaddleSwitchPico', new Map([
+    [0, { label: 'On', index: 1 }],
+    [2, { label: 'Off', index: 2 }],
+  ])],
 ])
+
+const HANDLER_KEY_DISCONNECT = '__lpDisconnectHandler'
+const HANDLER_KEY_UNSOLICITED = '__lpUnsolicitedHandler'
 
 export class PicoRemote {
   private services: Map<string, Service> = new Map()
-  private trackers: Map<string, ButtonTracker> = new Map()
-  // Map button href to ButtonNumber for event lookup
-  private hrefToButtonNumber: Map<string, number> = new Map()
 
-  private matterApi?: any
   constructor(
-    private readonly platform: LutronCasetaLeap,
+    private readonly platform: LutronPicoPlatform,
     private readonly accessory: PlatformAccessory,
     private readonly bridge: SmartBridge,
-    private readonly options: GlobalOptions,
-    matterApi?: any,
-  ) {
-    this.matterApi = matterApi
-  }
+  ) {}
 
   public async initialize(): Promise<DeviceWireResult> {
     const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
+    const deviceType: string = this.accessory.context.device.DeviceType
+
+    const dentry = BUTTON_MAP.get(deviceType)
+    if (!dentry) {
+      return { kind: DeviceWireResultType.Skipped, reason: `Pico variant ${deviceType} not yet supported` }
+    }
+
+    let rawBgs: Array<ButtonGroupDefinition | ExceptionDetail>
+    try {
+      rawBgs = await this.bridge.getButtonGroupsFromDevice(this.accessory.context.device)
+    } catch (e) {
+      return { kind: DeviceWireResultType.Error, reason: `Failed to get button groups for ${fullName}: ${e}` }
+    }
+
+    for (const bg of rawBgs) {
+      if (bg instanceof ExceptionDetail) {
+        return { kind: DeviceWireResultType.Skipped, reason: `${fullName}: button group has been removed` }
+      }
+    }
+    const bgs = rawBgs as ButtonGroupDefinition[]
+
+    let buttons: ButtonDefinition[] = []
+    for (const bg of bgs) {
+      try {
+        buttons = buttons.concat(await this.bridge.getButtonsFromGroup(bg))
+      } catch (e) {
+        return { kind: DeviceWireResultType.Error, reason: `Failed to get buttons from group ${bg.href}: ${e}` }
+      }
+    }
+
+    // Strict filter: any zone wiring OR any scene programming -> skip.
+    const assoc = picoAssociation(bgs, buttons)
+    if (assoc.associated) {
+      return { kind: DeviceWireResultType.Skipped, reason: `Pico is associated in Lutron app (${assoc.reason})` }
+    }
 
     this.accessory
       .getService(this.platform.api.hap.Service.AccessoryInformation)!
@@ -125,84 +114,21 @@ export class PicoRemote {
       .setCharacteristic(this.platform.api.hap.Characteristic.Model, this.accessory.context.device.ModelNumber)
       .setCharacteristic(this.platform.api.hap.Characteristic.Name, fullName)
       .setCharacteristic(this.platform.api.hap.Characteristic.ConfiguredName, fullName)
-      .setCharacteristic(
-        this.platform.api.hap.Characteristic.SerialNumber,
-        this.accessory.context.device.SerialNumber.toString(),
-      )
+      .setCharacteristic(this.platform.api.hap.Characteristic.SerialNumber, this.accessory.context.device.SerialNumber.toString())
 
-    const label_svc
-      = this.accessory.getService(this.platform.api.hap.Service.ServiceLabel)
-        || this.accessory.addService(this.platform.api.hap.Service.ServiceLabel)
-    label_svc.setCharacteristic(
+    const labelSvc = this.accessory.getService(this.platform.api.hap.Service.ServiceLabel)
+      || this.accessory.addService(this.platform.api.hap.Service.ServiceLabel)
+    labelSvc.setCharacteristic(
       this.platform.api.hap.Characteristic.ServiceLabelNamespace,
-      this.platform.api.hap.Characteristic.ServiceLabelNamespace.ARABIC_NUMERALS, // ha ha
+      this.platform.api.hap.Characteristic.ServiceLabelNamespace.ARABIC_NUMERALS,
     )
 
-    let bgs
-    try {
-      bgs = await this.bridge.getButtonGroupsFromDevice(this.accessory.context.device)
-    } catch (e) {
-      this.platform.log.error('Failed to get button group(s) belonging to', fullName, e)
-      return {
-        kind: DeviceWireResultType.Error,
-        reason: `Failed to get button group(s) belonging to ${fullName}: ${e}`,
-      }
-    }
-
-    // if there are any buttongroups that are already associated in the
-    // lutron app, and we've been told to skip them, return early.
-    if (bgs.some(bg => bg.AffectedZones !== undefined) && this.options.filterPico) {
-      return {
-        kind: DeviceWireResultType.Skipped,
-        reason: 'Associated with a device outside HomeKit',
-      }
-    }
-
-    bgs.forEach((bg) => {
-      if (bg instanceof ExceptionDetail) {
-        return new Error('Device has been removed')
-      }
-    })
-
-    let buttons: ButtonDefinition[] = []
-    for (const bg of bgs) {
-      try {
-        buttons = buttons.concat(await this.bridge.getButtonsFromGroup(bg))
-      } catch (e) {
-        this.platform.log.error('Failed to get buttons from button group', bg.href)
-        return {
-          kind: DeviceWireResultType.Error,
-          reason: `Failed to get buttons from button group ${bg.href}: ${e}`,
-        }
-      }
-    }
-
     for (const button of buttons) {
-      const dentry = BUTTON_MAP.get(this.accessory.context.device.DeviceType)
-      if (dentry === undefined) {
-        return {
-          kind: DeviceWireResultType.Error,
-          reason: `Could not find ${this.accessory.context.device.DeviceType} in button map`,
-        }
-      }
       const alias = dentry.get(button.ButtonNumber)
       if (alias === undefined) {
-        return {
-          kind: DeviceWireResultType.Error,
-          reason: `Could not find button ${button.ButtonNumber} in ${this.accessory.context.device.DeviceType} map entry`,
-        }
+        this.platform.log.warn(`No alias for button ${button.ButtonNumber} on ${deviceType}; skipping`)
+        continue
       }
-
-      // Map href to ButtonNumber for event lookup
-      this.hrefToButtonNumber.set(button.href, button.ButtonNumber)
-
-      this.platform.log.debug(
-        `setting up ${button.href} named ${button.Name} numbered ${button.ButtonNumber} as ${inspect(
-          alias,
-          true,
-          null,
-        )}`,
-      )
 
       const service
         = this.accessory.getServiceById(this.platform.api.hap.Service.StatelessProgrammableSwitch, alias.label)
@@ -211,195 +137,83 @@ export class PicoRemote {
             button.Name,
             alias.label,
           )
-      service.addLinkedService(label_svc)
 
+      service.addLinkedService(labelSvc)
       service.setCharacteristic(this.platform.api.hap.Characteristic.Name, alias.label)
       service.setCharacteristic(this.platform.api.hap.Characteristic.ServiceLabelIndex, alias.index)
 
-      const validValues = [this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS]
-      if (this.options.clickSpeedDouble !== 'disabled') {
-        validValues.push(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.DOUBLE_PRESS)
-      } else {
-        this.platform.log.debug('double press disabled')
-      }
-      if (this.options.clickSpeedLong !== 'disabled') {
-        validValues.push(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS)
-      } else {
-        this.platform.log.debug('long press disabled')
-      }
-      this.platform.log.debug('validValues', validValues)
-
-      service
-        .getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
+      // Single-press only: every Press event fires SINGLE_PRESS. Maximally
+      // reliable; no state machine to lose Releases.
+      service.getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
         .setProps({
-          maxValue: this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS,
-          validValues,
+          maxValue: this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS,
+          validValues: [this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS],
         })
 
-      const SINGLE_PRESS = () => {
-        return service
-          .getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
-          .setProps({
-            maxValue: this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS,
-            validValues,
-          })
-          .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS)
-      }
-      let DOUBLE_PRESS: () => Characteristic | null
-      if (this.options.clickSpeedDouble !== 'disabled') {
-        DOUBLE_PRESS = () => {
-          return service
-            .getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
-            .setProps({
-              maxValue: this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS,
-              validValues,
-            })
-            .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.DOUBLE_PRESS)
-        }
-      } else {
-        DOUBLE_PRESS = () => {
-          return null
-        }
-      }
-
-      let LONG_PRESS: () => Characteristic | null
-      if (this.options.clickSpeedLong !== 'disabled') {
-        LONG_PRESS = () => {
-          return service
-            .getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
-            .setProps({
-              maxValue: this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS,
-              validValues,
-            })
-            .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.LONG_PRESS)
-        }
-      } else {
-        LONG_PRESS = () => {
-          return null
-        }
-      }
-
       this.services.set(button.href, service)
-      this.trackers.set(
-        button.href,
-        new ButtonTracker(
-          SINGLE_PRESS,
-          DOUBLE_PRESS,
-          LONG_PRESS,
-          this.platform.log,
-          button.href,
-          this.options.clickSpeedDouble,
-          this.options.clickSpeedLong,
-          alias.isUpDown,
-        ),
-      )
 
-      this.platform.log.debug(`subscribing to ${button.href} events`)
+      this.platform.log.debug(`Subscribing ${fullName} -> ${alias.label} (${button.href})`)
       this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
+    }
 
-      // when the connection is lost, so are subscriptions.
-      this.bridge.on('disconnected', () => {
-        this.platform.log.debug(`re-subscribing to ${button.href} events after connection loss`)
+    // One disconnect handler per accessory. If initialize() runs again (e.g.
+    // after a deviceheard refresh), we replace it instead of stacking another.
+    const accAny = this.accessory as unknown as Record<string, unknown>
+    const prevDisconnect = accAny[HANDLER_KEY_DISCONNECT] as ((..._args: any[]) => void) | undefined
+    if (prevDisconnect) {
+      this.bridge.removeListener('disconnected', prevDisconnect)
+    }
+    const onDisconnect = () => {
+      for (const button of buttons) {
+        this.platform.log.debug(`Re-subscribing ${button.href} after disconnect`)
         this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
-      })
-    }
-
-    this.platform.on('unsolicited', this.handleUnsolicited.bind(this))
-
-    return {
-      kind: DeviceWireResultType.Success,
-      name: fullName,
-    }
-  }
-
-  handleEvent(response: Response): void {
-    const evt = (response.Body! as OneButtonStatusEvent).ButtonStatus
-    // Look up ButtonNumber from href
-    const buttonHref = evt.Button.href
-    const buttonNumber = this.hrefToButtonNumber.get(buttonHref)
-    // Emit Matter cluster events for LevelControl and Scenes clusters if present
-    if (this.matterApi && (this.accessory as any).clusters && buttonNumber !== undefined) {
-      const dentry = BUTTON_MAP.get(this.accessory.context.device.DeviceType)
-      if (dentry) {
-        const alias = dentry.get(buttonNumber)
-        if (alias) {
-          // LevelControl: Raise/Lower
-          if (alias.label.toLowerCase() === 'raise') {
-            this.matterApi.emitClusterEvent(this.accessory, 'levelControl', 'raise')
-          } else if (alias.label.toLowerCase() === 'lower') {
-            this.matterApi.emitClusterEvent(this.accessory, 'levelControl', 'lower')
-          }
-          // Scenes: Button 1-4
-          if (alias.label.toLowerCase().startsWith('button ')) {
-            const sceneNum = Number.parseInt(alias.label.split(' ')[1], 10)
-            if (!Number.isNaN(sceneNum)) {
-              this.matterApi.emitClusterEvent(this.accessory, 'scenes', 'recallScene', sceneNum)
-            }
-          }
-        }
       }
     }
+    this.bridge.on('disconnected', onDisconnect)
+    accAny[HANDLER_KEY_DISCONNECT] = onDisconnect
+
+    // Same idea for the platform-level unsolicited fallback.
+    const prevUnsolicited = accAny[HANDLER_KEY_UNSOLICITED] as ((..._args: any[]) => void) | undefined
+    if (prevUnsolicited) {
+      this.platform.removeListener('unsolicited', prevUnsolicited)
+    }
+    const onUnsolicited = this.handleUnsolicited.bind(this)
+    this.platform.on('unsolicited', onUnsolicited)
+    accAny[HANDLER_KEY_UNSOLICITED] = onUnsolicited
+
+    return { kind: DeviceWireResultType.Success, name: fullName }
+  }
+
+  private handleEvent(response: Response): void {
+    const evt = (response.Body as OneButtonStatusEvent).ButtonStatus
+    const action = evt.ButtonEvent.EventType
+
+    // Only Press events fire HomeKit. Releases and LongHolds are intentionally
+    // ignored - this is the maximally-reliable model.
+    if (action !== 'Press') {
+      return
+    }
+
     const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
-    this.platform.log.info(
-      `Button ${evt.Button.href} on Pico remote ${fullName} got action ${evt.ButtonEvent.EventType}`,
-    )
-    this.trackers.get(evt.Button.href)!.update(evt.ButtonEvent.EventType)
-
-    // Emit Matter cluster event for On/Off cluster if present
-    if (this.matterApi && (this.accessory as any).clusters?.onOff && buttonNumber !== undefined) {
-      const dentry = BUTTON_MAP.get(this.accessory.context.device.DeviceType)
-      if (dentry) {
-        const alias = dentry.get(buttonNumber)
-        if (alias) {
-          if (alias.label.toLowerCase() === 'on') {
-            this.matterApi.emitClusterEvent(this.accessory, 'onOff', 'on')
-          } else if (alias.label.toLowerCase() === 'off') {
-            this.matterApi.emitClusterEvent(this.accessory, 'onOff', 'off')
-          }
-        }
-      }
+    const service = this.services.get(evt.Button.href)
+    if (!service) {
+      this.platform.log.warn(`Got button event for unknown href ${evt.Button.href} on ${fullName}`)
+      return
     }
+
+    this.platform.log.info(`Button press on ${fullName} (${evt.Button.href})`)
+    service.getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
+      .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS)
   }
 
-  handleUnsolicited(response: Response): void {
-    if (response.Header.MessageBodyType === 'OneButtonStatusEvent') {
-      const href = (response.Body as OneButtonStatusEvent)?.ButtonStatus.Button.href
-      if (this.services.has(href)) {
-        this.platform.log.warn('got unsolicited response for known button ', href, ', handling anyway')
-        this.handleEvent(response)
-      }
+  private handleUnsolicited(response: Response): void {
+    if (response.Header.MessageBodyType !== 'OneButtonStatusEvent') {
+      return
     }
-  }
-
-  /**
-   * Returns a Matter clusters object for this Pico remote, based on its button map.
-   */
-  public getMatterClusters(): Record<string, any> {
-    const type = this.accessory.context.device.DeviceType
-    const dentry = BUTTON_MAP.get(type)
-    if (!dentry) {
-      return {}
+    const href = (response.Body as OneButtonStatusEvent)?.ButtonStatus.Button.href
+    if (this.services.has(href)) {
+      this.platform.log.warn(`Unsolicited event for known button ${href}; handling anyway`)
+      this.handleEvent(response)
     }
-    // Gather all button labels for this remote
-    const buttonLabels = Array.from(dentry.values()).map(v => v.label.toLowerCase())
-    const clusters: Record<string, any> = {}
-    // On/Off cluster for remotes with On/Off buttons
-    if (buttonLabels.includes('on') && buttonLabels.includes('off')) {
-      clusters.onOff = { onOff: false }
-    }
-    // LevelControl cluster for Raise/Lower
-    if (buttonLabels.includes('raise') && buttonLabels.includes('lower')) {
-      clusters.levelControl = { currentLevel: 0, minLevel: 0, maxLevel: 254 }
-    }
-    // Scenes cluster for 4-button scene/zone remotes
-    if (type.includes('4ButtonScene') || type.includes('4ButtonZone')) {
-      clusters.scenes = { sceneCount: 4 }
-    }
-    // 4Button2Group: treat as two on/off pairs
-    if (type.includes('4Button2Group')) {
-      clusters.onOff = { onOff: false }
-      clusters.onOff2 = { onOff: false }
-    }
-    return clusters
   }
 }

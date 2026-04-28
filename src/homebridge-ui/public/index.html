@@ -1,49 +1,9 @@
 <div class="card card-body text-center">
-    <p class="h2 card-title">Lutron Device Configuration</p>
-    <div id="options" class="card-body my-3 w-75 mx-auto">
-
-        <h4 class="card-title">Global Options</h4>
-        <form id='optionsForm' class="form-horizontal">
-
-                <div class="form-check row py-sm-3 mb-0">
-                    <input class="form-check-input col-sm-1" type="checkbox" value="" id="filterPicoChk"/>
-                    <label class="form-check-label col-sm-11 text-left" for="filterPicoChk">
-                        Exclude Pico remotes that are associated in the Lutron app
-                    </label>
-                    <br/>
-                </div>
-
-                <div class="form-check row py-sm-3 mb-0">
-                    <input class="form-check-input col-sm-1" type="checkbox" value="" id="filterBlindsChk"/>
-                    <label class="form-check-label col-sm-11 text-left" for="filterBlindsChk">
-                        Disable support for Serena wood blinds in this plugin
-                    </label>
-                    <br/>
-                </div>
-
-                <div class="form-group row py-sm-3 mb-0">
-                    <label for='clickSpeedLongSelect' class='col-sm-5 col-form-label'>Long press speed</label>
-                    <select class="form-control-sm custom-select col-sm-7" id="clickSpeedLongSelect">
-                        <option value="quick">Quick</option>
-                        <option selected value="default">Default</option>
-                        <option value="relaxed">Relaxed</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-
-                <div class="form-group row py-sm-3 mb-0">
-                    <label for='clickSpeedDoubleSelect' class='col-sm-5 col-form-label'>Double press speed</label>
-                    <select class="form-control-sm custom-select col-sm-7" id="clickSpeedDoubleSelect">
-                        <option value="quick">Quick</option>
-                        <option value="default" selected>Default</option>
-                        <option value="relaxed">Relaxed</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-
-        </form>
-
-    </div>
+    <p class="h2 card-title">Lutron Pico Configuration</p>
+    <p class="text-muted small">
+        Only Pico remotes that are <strong>not</strong> associated with any device or scene in
+        the Lutron app will be exposed to HomeKit.
+    </p>
     <div id="bridges">
         <div class="card my-2" id="searching">Searching for bridges...</div>
     </div>
@@ -56,20 +16,11 @@
     function bootstrapConfig(pluginConfig) {
         if (pluginConfig.length === 0) {
             console.log("no configuration detected. bootstrapping.");
-            pluginConfig = [{name: "Lutron", platform: "LutronCasetaLeap", options: { filterPico: false, filterBlinds: false, clickSpeedDouble: "default", clickSpeedLong: "default"}, secrets: []}];
+            pluginConfig = [{ name: "Lutron Pico", platform: "LutronPico", secrets: [] }];
         }
         if (pluginConfig[0].secrets === undefined) {
             console.log("configuration with no secrets. bootstrapping.");
-            pluginConfig[0].secrets = new Array();
-        }
-        if (pluginConfig[0].options === undefined) {
-            console.log("configuration with no options. bootstrapping.");
-            pluginConfig[0].options = {
-                filterPico: false,
-                filterBlinds: false,
-                clickSpeedDouble: "default",
-                clickSpeedLong: "default",
-            };
+            pluginConfig[0].secrets = [];
         }
         return pluginConfig;
     }
@@ -97,26 +48,7 @@
             return;
         }
 
-        console.log(pluginConfig[0]);
-        console.log(document.querySelector('#filterPicoChk'));
-        document.querySelector('#filterPicoChk').checked = pluginConfig[0].options.filterPico;
-        document.querySelector('#filterBlindsChk').checked = pluginConfig[0].options.filterBlinds;
-        document.querySelector('#clickSpeedLongSelect').value = pluginConfig[0].options.clickSpeedLong;
-        document.querySelector('#clickSpeedDoubleSelect').value = pluginConfig[0].options.clickSpeedDouble;
-
-        document.getElementById('optionsForm').addEventListener('input', () => {
-            console.log("options clicked");
-            pluginConfig = bootstrapConfig(pluginConfig);
-            pluginConfig[0].options.filterPico = document.querySelector('#filterPicoChk').checked;
-            pluginConfig[0].options.filterBlinds = document.querySelector('#filterBlindsChk').checked;
-            pluginConfig[0].options.clickSpeedLong = document.querySelector('#clickSpeedLongSelect').value;
-            pluginConfig[0].options.clickSpeedDouble = document.querySelector('#clickSpeedDoubleSelect').value;
-            console.log(pluginConfig[0].options);
-            homebridge.updatePluginConfig(pluginConfig);
-        });
-
-        let secretMap = new Map();
-        secretMap = new Map(pluginConfig[0].secrets.map((o) => [o.bridgeid.toUpperCase(), o]));
+        let secretMap = new Map(pluginConfig[0].secrets.map((o) => [o.bridgeid.toUpperCase(), o]));
         let bridgeMap = new Map();
 
         homebridge.showSpinner();
@@ -154,7 +86,6 @@
                 const b = bridgeMap.get(event.data);
                 if (b === undefined) {
                     console.error('failed trying to get connected bridge', event.data, 'from map');
-                    console.dir(bridgeMap);
                     throw new Error("could not find connected bridge " + event.data + " in map");
                 }
                 b.toAssociated(() => {
@@ -162,7 +93,6 @@
                 });
             }
 
-            console.log('listening for connected');
             homebridge.addEventListener('connected', handleConnected);
 
             function handleFailed(event) {
@@ -179,7 +109,6 @@
                 );
             }
 
-            console.log('listening for failed');
             homebridge.addEventListener('failed', handleFailed);
 
             function handleAssociated(event) {
@@ -196,16 +125,11 @@
                 doConnect(b, secretMap);
             }
 
-            console.log('listening for associated');
             homebridge.addEventListener('associated', handleAssociated);
-
-            console.log('setup done');
         } catch (e) {
             console.log(e.error, e.message, e.stack);
             homebridge.toast.error(e.error, e.message);
         }
-
-        console.log('exiting');
     })();
 
     function doAssociate(bridge) {
@@ -216,9 +140,6 @@
             })
             .then(() => console.log('associate request complete for', bridge.bridgeid, bridge.ipAddr))
             .catch((e) => {
-                // TODO inspect this to return something more user-friendly
-                // if it's a quasi-leap w/ a 401 code, say something about "didn't press button
-                // in time"
                 console.log('associate request failed', bridge.bridgeid, bridge.ipAddr, e);
                 homebridge.toast.error(e.message);
                 bridge.toUnassociated(() => {
@@ -245,16 +166,11 @@
             .then(async (config) => {
                 await updateConfigFromMap(config, secretMap);
             })
-            .then(() => {
-                console.log('removed secret', bridgeid);
-                console.dir(secretMap);
-            });
+            .then(() => console.log('removed secret', bridgeid));
     }
 
     class Bridge {
         constructor(systype, bridgeid, ipAddr) {
-            console.log('new bridge', bridgeid, ipAddr);
-
             this.systype = systype;
             this.bridgeid = bridgeid;
             this.ipAddr = ipAddr;
@@ -266,7 +182,6 @@
             bridgeElem.innerHTML = bridgeStates.INITIAL(this.systype, this.bridgeid, this.ipAddr);
 
             this.elem = bridgeElem;
-
             this.pendTimeout = undefined;
             this.connTimeout = undefined;
         }
@@ -275,149 +190,59 @@
             return this.elem;
         }
 
-        // CONNECTING -> ASSOCIATED (external)
-        // CONNECTING -> FAILED (timeout)
-        // CONNECTING -> FAILED (external)
         toConnecting(onTimeout) {
-            console.log('toConnecting', this.bridgeid);
             this.elem.innerHTML = bridgeStates.CONNECTING(this.systype, this.bridgeid, this.ipAddr);
-
             this.connTimeout = setTimeout(() => {
-                console.log('CONNECTING', this.bridgeid, 'timeout');
-                if (onTimeout !== undefined) {
-                    console.log('calling CONNECTING timeout helper', this.bridgeid);
-                    onTimeout();
-                }
+                if (onTimeout !== undefined) onTimeout();
                 this.toFailed('Connection timed out');
             }, 5000);
         }
 
-        // ASSOCIATED -> UNASSOCIATED (internal)
         toAssociated(onResetClick) {
-            console.log('toAssociated', this.bridgeid);
             this.elem.innerHTML = bridgeStates.ASSOCIATED(this.systype, this.bridgeid, this.ipAddr);
+            if (this.connTimeout !== undefined) { clearTimeout(this.connTimeout); this.connTimeout = undefined; }
+            if (this.pendTimeout !== undefined) { clearTimeout(this.pendTimeout); this.pendTimeout = undefined; }
 
-            // clear the timeout set in CONNECTING state now that we're connected
-            if (this.connTimeout !== undefined) {
-                console.log('ASSOCIATED clearing CONNECTING timeout', this.bridgeid);
-                clearTimeout(this.connTimeout);
-                this.connTimeout = undefined;
-            }
-
-            // clear the timeout set in PENDING since we have creds now
-            if (this.pendTimeout !== undefined) {
-                console.log('clearing PENDING timeout', this.bridgeid);
-                clearTimeout(this.pendTimeout);
-                this.pendTimeout = undefined;
-            }
-
-            document.getElementById(this.bridgeid + 'reset').addEventListener(
-                'click',
-                (() => {
-                    console.log('reset from ASSOCIATED clicked', this.bridgeid);
-                    if (onResetClick !== undefined) {
-                        console.log('calling reset ASSOCIATED helper', this.bridgeid);
-                        onResetClick();
-                    }
-                    this.toUnassociated(() => {
-                        doAssociate(this);
-                    });
-                }).bind(this),
-            );
+            document.getElementById(this.bridgeid + 'reset').addEventListener('click', (() => {
+                if (onResetClick !== undefined) onResetClick();
+                this.toUnassociated(() => doAssociate(this));
+            }).bind(this));
         }
 
-        // UNASSOCIATED -> PENDING (internal)
         toUnassociated(onAssociateClick) {
-            console.log('toUnassociated', this.bridgeid, this.ipAddr);
             this.elem.innerHTML = bridgeStates.UNASSOCIATED(this.systype, this.bridgeid, this.ipAddr);
 
-            document.getElementById(this.bridgeid + 'assoc').addEventListener(
-                'click',
-                (() => {
-                    console.log('associate from UNASSOCIATED clicked', this.bridgeid);
-                    if (onAssociateClick !== undefined) {
-                        console.log('calling associate from UNASSOCIATED helper', this.bridgeid);
-                        onAssociateClick();
-                    }
-                    this.toPending(() => {
-                        homebridge.toast.error('Association with bridge ' + this.bridgeid + ' timed out.');
-                    });
-                }).bind(this),
-            );
+            document.getElementById(this.bridgeid + 'assoc').addEventListener('click', (() => {
+                if (onAssociateClick !== undefined) onAssociateClick();
+                this.toPending(() => {
+                    homebridge.toast.error('Association with bridge ' + this.bridgeid + ' timed out.');
+                });
+            }).bind(this));
         }
 
-        // PENDING -> UNASSOCIATED (timeout)
-        // PENDING -> ASSOCIATED (external)
-        // PENDING -> UNASSOCIATED (internal)
         toPending(onTimeout, onCancelClick) {
-            console.log('toPending', this.bridgeid);
             this.elem.innerHTML = bridgeStates.PENDING(this.systype, this.bridgeid, this.ipAddr);
 
             this.pendTimeout = setTimeout(() => {
-                console.log('PENDING', this.bridgeid, 'timeout');
-                if (onTimeout !== undefined) {
-                    console.log('calling PENDING timeout helper', this.bridgeid);
-                    onTimeout();
-                }
-                //show toast
-                this.toUnassociated(() => {
-                    doAssociate(this);
-                });
+                if (onTimeout !== undefined) onTimeout();
+                this.toUnassociated(() => doAssociate(this));
             }, 30000);
-
-            document.getElementById(this.bridgeid + 'cancel').addEventListener(
-                'click',
-                (() => {
-                    console.log('cancel from PENDING clicked', this.bridgeid);
-                    if (onCancelClick !== undefined) {
-                        console.log('calling PENDING cancel helper', this.bridgeid);
-                        onCancelClick();
-                    }
-                    this.toUnassociated(() => {
-                        doAssociate(this);
-                    });
-                }).bind(this),
-            );
         }
 
-        // FAILED -> UNASSOCIATED (internal)
         toFailed(reason, onResetClick, onRetryClick) {
-            console.log('toFailed', this.bridgeid, reason);
             this.elem.innerHTML = bridgeStates.FAILED(this.systype, this.bridgeid, this.ipAddr);
             homebridge.toast.error('Connection failed: ' + reason);
+            if (this.connTimeout !== undefined) { clearTimeout(this.connTimeout); this.connTimeout = undefined; }
 
-            // clear the timeout set in CONNECTING state now that it's failed
-            if (this.connTimeout !== undefined) {
-                console.log('in FAILED clearing CONNECTING timeout', this.bridgeid);
-                clearTimeout(this.connTimeout);
-                this.connTimeout = undefined;
-            }
+            document.getElementById(this.bridgeid + 'retry').addEventListener('click', (() => {
+                if (onRetryClick !== undefined) onRetryClick();
+                this.toConnecting();
+            }).bind(this));
 
-            document.getElementById(this.bridgeid + 'retry').addEventListener(
-                'click',
-                (() => {
-                    console.log('retry from FAILED clicked', this.bridgeid);
-                    if (onRetryClick !== undefined) {
-                        console.log('calling retry FAILED helper', this.bridgeid);
-                        onRetryClick();
-                    }
-                    this.toConnecting();
-                }).bind(this),
-            );
-
-            document.getElementById(this.bridgeid + 'reset').addEventListener(
-                'click',
-                (() => {
-                    console.log('reset from FAILED clicked', this.bridgeid);
-                    if (onResetClick !== undefined) {
-                        console.log('calling reset FAILED helper', this.bridgeid);
-                        onResetClick();
-                    }
-                    this.toUnassociated(() => {
-                        doAssociate(this);
-                    });
-                }).bind(this),
-            );
+            document.getElementById(this.bridgeid + 'reset').addEventListener('click', (() => {
+                if (onResetClick !== undefined) onResetClick();
+                this.toUnassociated(() => doAssociate(this));
+            }).bind(this));
         }
     }
 
@@ -434,11 +259,6 @@
         <h4 class="card-title">${systype} ${bridgeid}</h4>
         <h6 class="card-subtitle">${ipAddr}</h6>
         <div class="alert alert-light" role="alert">Connecting...</div>
-        <!--
-        <div class="card-footer text-muted">
-            <button type="button" class="btn btn-dark">Cancel</button>
-        </div>
-        -->
     </div>`,
 
         ASSOCIATED: (systype, bridgeid, ipAddr) =>
@@ -474,12 +294,6 @@
         <h4 class="card-title">${systype} ${bridgeid}</h4>
         <h6 class="card-subtitle">${ipAddr}</h6>
         <p class="card-text">Press the button on the back of the bridge within 30 seconds...</p>
-        <!--
-        <!-- TODO add the ability to cancel an association
-        <div class="card-footer text-muted">
-            <button type="button" class="btn btn-dark" id="${bridgeid}cancel">Cancel</button>
-        </div>
-        -->
     </div>`,
     });
 </script>
