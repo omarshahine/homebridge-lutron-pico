@@ -1,3 +1,12 @@
+# [3.1.0](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.5...v3.1.0) (2026-04-29)
+
+
+### Features
+
+* configurable log verbosity (logLevel + buttonPressLogging) ([#228](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/issues/228)) ([40b1fd9](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/commit/40b1fd9116c2b8b4877d70001ddac4f6c3f7ee5c))
+
+
+
 ## [3.0.5](https://github.com/homebridge-plugins/homebridge-lutron-caseta-leap/compare/v3.0.4...v3.0.5) (2026-04-27)
 
 
