@@ -190,7 +190,11 @@ export class PicoRemote {
       this.services.set(button.href, service)
 
       this.platform.log.debug(`Subscribing ${fullName} -> ${alias.label} (${button.href})`)
-      this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
+      try {
+        this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
+      } catch (e) {
+        this.platform.log.error(`Failed to subscribe ${fullName} ${alias.label} (${button.href}): ${e}. Button presses on this Pico will not reach HomeKit.`)
+      }
     }
 
     // One disconnect handler per accessory. If initialize() runs again (e.g.
@@ -201,9 +205,14 @@ export class PicoRemote {
       this.bridge.removeListener('disconnected', prevDisconnect)
     }
     const onDisconnect = () => {
+      this.platform.log.info(`Bridge disconnected; re-subscribing ${buttons.length} button(s) on ${fullName}`)
       for (const button of buttons) {
         this.platform.log.debug(`Re-subscribing ${button.href} after disconnect`)
-        this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
+        try {
+          this.bridge.subscribeToButton(button, this.handleEvent.bind(this))
+        } catch (e) {
+          this.platform.log.error(`Failed to re-subscribe ${button.href} on ${fullName} after disconnect: ${e}`)
+        }
       }
     }
     this.bridge.on('disconnected', onDisconnect)
@@ -224,33 +233,46 @@ export class PicoRemote {
   private handleEvent(response: Response): void {
     const evt = (response.Body as OneButtonStatusEvent).ButtonStatus
     const action = evt.ButtonEvent.EventType
+    const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
 
-    // Only Press events fire HomeKit. Releases and LongHolds are intentionally
-    // ignored - this is the maximally-reliable model.
+    // Single-press model: only Press fires HomeKit. Release and LongHold are
+    // intentionally dropped, but we still log them at debug so "I pressed it
+    // and nothing happened" is diagnosable - if you only ever see Release
+    // events for a button the bridge or firmware is in a weird state.
     if (action !== 'Press') {
+      this.platform.log.debug(`Ignoring ${action} event on ${fullName} (${evt.Button.href})`)
       return
     }
 
-    const fullName = this.accessory.context.device.FullyQualifiedName.join(' ')
     const service = this.services.get(evt.Button.href)
     if (!service) {
-      this.platform.log.warn(`Got button event for unknown href ${evt.Button.href} on ${fullName}`)
+      this.platform.log.warn(`Got button event for unknown href ${evt.Button.href} on ${fullName}; press will not reach HomeKit`)
       return
     }
 
     this.platform.log.info(`Button press on ${fullName} (${evt.Button.href})`)
-    service.getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
-      .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS)
+    try {
+      service.getCharacteristic(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent)
+        .updateValue(this.platform.api.hap.Characteristic.ProgrammableSwitchEvent.SINGLE_PRESS)
+    } catch (e) {
+      this.platform.log.error(`Failed to update ProgrammableSwitchEvent for ${fullName} (${evt.Button.href}): ${e}`)
+    }
   }
 
   private handleUnsolicited(response: Response): void {
     if (response.Header.MessageBodyType !== 'OneButtonStatusEvent') {
+      this.platform.log.debug(`Ignoring unsolicited ${response.Header.MessageBodyType} on ${response.Header.Url ?? '(no url)'}`)
       return
     }
     const href = (response.Body as OneButtonStatusEvent)?.ButtonStatus.Button.href
     if (this.services.has(href)) {
-      this.platform.log.warn(`Unsolicited event for known button ${href}; handling anyway`)
+      this.platform.log.warn(`Unsolicited event for known button ${href}; handling anyway (per-button subscription may be stale)`)
       this.handleEvent(response)
+    } else {
+      // Not for any of our buttons. Could belong to another accessory on the
+      // same bridge; debug-log so we can tell the difference between "bridge
+      // is silent" and "bridge is talking but we're filtering it".
+      this.platform.log.debug(`Unsolicited button event for href ${href} not handled by ${this.accessory.context.device.FullyQualifiedName.join(' ')}`)
     }
   }
 }
