@@ -5,7 +5,7 @@ import type { DeviceWireResult, LutronPicoPlatform } from './platform.js'
 
 import { ExceptionDetail } from 'lutron-leap'
 
-import { picoAssociation } from './picoFilter.js'
+import { picoAssociation, type PicoButtonPreset } from './picoFilter.js'
 import { DeviceWireResultType } from './platform.js'
 
 // DeviceType -> ButtonNumber -> human-readable label and stable order in
@@ -102,10 +102,47 @@ export class PicoRemote {
       }
     }
 
-    // Strict filter: any zone wiring OR any scene programming -> skip.
-    const assoc = picoAssociation(bgs, buttons)
-    if (assoc.associated) {
-      return { kind: DeviceWireResultType.Skipped, reason: `Pico is associated in Lutron app (${assoc.reason})` }
+    // Cheap path: any zone wiring -> associated, no need to fetch presets.
+    const zoneCheck = picoAssociation(bgs, [])
+    if (zoneCheck.associated) {
+      return { kind: DeviceWireResultType.Skipped, reason: `Pico is associated in Lutron app (${zoneCheck.reason})` }
+    }
+
+    // Deep path: every button on a Pico carries ProgrammingModelType
+    // 'SingleActionProgrammingModel' regardless of programming, so the only
+    // ground truth is whether the linked Preset has any assignments. Fetch
+    // ProgrammingModel -> Preset for each button, then re-run the filter.
+    const buttonPresets: PicoButtonPreset[] = []
+    for (const b of buttons) {
+      const pmHref = (b.ProgrammingModel as { href?: string } | undefined)?.href
+      if (!pmHref) {
+        buttonPresets.push({ buttonHref: b.href, presetHref: null, preset: null })
+        continue
+      }
+      let pm: { Preset?: { href?: string } } | undefined
+      try {
+        const resp = await this.bridge.getHref({ href: pmHref } as any) as any
+        pm = resp?.ProgrammingModel ?? resp
+      } catch (e) {
+        return { kind: DeviceWireResultType.Error, reason: `Failed to read programming model ${pmHref}: ${e}` }
+      }
+      const presetHref = pm?.Preset?.href
+      if (!presetHref) {
+        buttonPresets.push({ buttonHref: b.href, presetHref: null, preset: null })
+        continue
+      }
+      try {
+        const resp = await this.bridge.getHref({ href: presetHref } as any) as any
+        const preset = resp?.Preset ?? resp
+        buttonPresets.push({ buttonHref: b.href, presetHref, preset })
+      } catch (e) {
+        return { kind: DeviceWireResultType.Error, reason: `Failed to read preset ${presetHref}: ${e}` }
+      }
+    }
+
+    const presetCheck = picoAssociation(bgs, buttonPresets)
+    if (presetCheck.associated) {
+      return { kind: DeviceWireResultType.Skipped, reason: `Pico is associated in Lutron app (${presetCheck.reason})` }
     }
 
     this.accessory
