@@ -154,15 +154,6 @@ export class PicoRemote {
       }
     }
 
-    // if there are any buttongroups that are already associated in the
-    // lutron app, and we've been told to skip them, return early.
-    if (bgs.some(bg => bg.AffectedZones !== undefined) && this.options.filterPico) {
-      return {
-        kind: DeviceWireResultType.Skipped,
-        reason: 'Associated with a device outside HomeKit',
-      }
-    }
-
     // Bail out if the bridge returned an ExceptionDetail for any button group
     // (typically when the device is mid-removal in the Lutron app). The previous
     // code used forEach with `return new Error(...)` — both the return and the
@@ -188,6 +179,66 @@ export class PicoRemote {
         return {
           kind: DeviceWireResultType.Error,
           reason: `Failed to get buttons from button group ${bg.href}: ${e}`,
+        }
+      }
+    }
+
+    // If we've been told to skip Picos already associated in the Lutron app,
+    // do a two-stage check.
+    //
+    // Stage 1 (cheap): any button group with non-empty AffectedZones is
+    // wired to a light/dimmer/switch/scene in the Lutron app.
+    //
+    // The previous check `AffectedZones !== undefined` was always true on
+    // the wire even for empty arrays, so it skipped audio Picos, fan Picos,
+    // and scene-only Picos that carry an empty AffectedZones field but
+    // still have real programming. The opposite of the desired behaviour.
+    //
+    // Stage 2 (deep): for Picos with no zone wiring, every button reports
+    // ProgrammingModelType: 'SingleActionProgrammingModel' regardless of
+    // whether the user has actually programmed it - so the only ground
+    // truth is whether each button's linked Preset carries assignments.
+    // Unprogrammed Presets are a bare {href, Parent} shell. Programmed
+    // ones carry one or more *Assignments arrays (PresetAssignments,
+    // DimmedLevelAssignments, SwitchedLevelAssignments, FanSpeedAssignments,
+    // PlayPauseToggleAssignments, NextTrackAssignments, FavoriteCycleAssignments,
+    // RaiseLowerAssignments, etc).
+    if (this.options.filterPico) {
+      const wired = bgs.find(bg => Array.isArray(bg.AffectedZones) && bg.AffectedZones.length > 0)
+      if (wired) {
+        return {
+          kind: DeviceWireResultType.Skipped,
+          reason: `Associated with a device outside HomeKit (${wired.href} has ${wired.AffectedZones!.length} zone(s) wired)`,
+        }
+      }
+      for (const button of buttons) {
+        const pmHref = (button.ProgrammingModel as { href?: string } | undefined)?.href
+        if (!pmHref)
+          continue
+        let pm: { Preset?: { href?: string } } | undefined
+        try {
+          const resp = await this.bridge.getHref({ href: pmHref } as any) as any
+          pm = resp?.ProgrammingModel ?? resp
+        } catch (e) {
+          this.platform.log.warn(`Failed to read programming model ${pmHref} for ${fullName}: ${e}; treating ${button.href} as unprogrammed`)
+          continue
+        }
+        const presetHref = pm?.Preset?.href
+        if (!presetHref)
+          continue
+        let preset: unknown
+        try {
+          const resp = await this.bridge.getHref({ href: presetHref } as any) as any
+          preset = resp?.Preset ?? resp
+        } catch (e) {
+          this.platform.log.warn(`Failed to read preset ${presetHref} for ${fullName}: ${e}; treating ${button.href} as unprogrammed`)
+          continue
+        }
+        if (presetIsProgrammed(preset)) {
+          return {
+            kind: DeviceWireResultType.Skipped,
+            reason: `Associated with a device outside HomeKit (${button.href} preset ${presetHref} has assignments)`,
+          }
         }
       }
     }
@@ -440,4 +491,23 @@ export class PicoRemote {
     }
     return clusters
   }
+}
+
+// A LEAP Preset is "programmed" if it carries any non-empty assignment array.
+// The unprogrammed shape is just {href, Parent}. Programmed Presets carry one
+// or more of: PresetAssignments, DimmedLevelAssignments, SwitchedLevelAssignments,
+// FanSpeedAssignments, TiltAssignments, PlayPauseToggleAssignments,
+// NextTrackAssignments, FavoriteCycleAssignments, RaiseLowerAssignments, etc.
+// We don't enumerate the families - any *Assignments-shaped key with content
+// counts, which makes the check forward-compatible with future LEAP types.
+export function presetIsProgrammed(preset: unknown): boolean {
+  if (!preset || typeof preset !== 'object')
+    return false
+  for (const [k, v] of Object.entries(preset as Record<string, unknown>)) {
+    if (k === 'href' || k === 'Parent')
+      continue
+    if (Array.isArray(v) && v.length > 0)
+      return true
+  }
+  return false
 }
