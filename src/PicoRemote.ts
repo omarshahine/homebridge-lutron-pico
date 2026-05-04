@@ -220,7 +220,7 @@ export class PicoRemote {
           const resp = await this.bridge.getHref({ href: pmHref } as any) as any
           pm = resp?.ProgrammingModel ?? resp
         } catch (e) {
-          this.platform.log.warn(`Failed to read programming model ${pmHref} for ${fullName}: ${e}; treating ${button.href} as unprogrammed`)
+          this.platform.log.warn(`Failed to read programming model ${pmHref} for ${fullName}; treating ${button.href} as unprogrammed:`, e)
           continue
         }
         const presetHref = pm?.Preset?.href
@@ -231,7 +231,7 @@ export class PicoRemote {
           const resp = await this.bridge.getHref({ href: presetHref } as any) as any
           preset = resp?.Preset ?? resp
         } catch (e) {
-          this.platform.log.warn(`Failed to read preset ${presetHref} for ${fullName}: ${e}; treating ${button.href} as unprogrammed`)
+          this.platform.log.warn(`Failed to read preset ${presetHref} for ${fullName}; treating ${button.href} as unprogrammed:`, e)
           continue
         }
         if (presetIsProgrammed(preset)) {
@@ -498,13 +498,14 @@ export class PicoRemote {
 // or more of: PresetAssignments, DimmedLevelAssignments, SwitchedLevelAssignments,
 // FanSpeedAssignments, TiltAssignments, PlayPauseToggleAssignments,
 // NextTrackAssignments, FavoriteCycleAssignments, RaiseLowerAssignments, etc.
-// We don't enumerate the families - any *Assignments-shaped key with content
-// counts, which makes the check forward-compatible with future LEAP types.
+// We don't enumerate the families - any key whose name ends in "Assignments"
+// with a non-empty array counts, which makes the check forward-compatible
+// with future LEAP types while ignoring unrelated array fields LEAP may add.
 export function presetIsProgrammed(preset: unknown): boolean {
   if (!preset || typeof preset !== 'object')
     return false
   for (const [k, v] of Object.entries(preset as Record<string, unknown>)) {
-    if (k === 'href' || k === 'Parent')
+    if (!k.endsWith('Assignments'))
       continue
     if (Array.isArray(v) && v.length > 0)
       return true
