@@ -54,6 +54,17 @@
               { "title": "Info — visible in normal logs", "enum": ["info"] },
               { "title": "Silent — never logged", "enum": ["silent"] }
             ]
+          },
+          "newDeviceRefreshDelaysSeconds": {
+            "type": "array",
+            "title": "New device discovery refresh schedule (seconds)",
+            "description": "After the bridge announces a new device (deviceheard), the plugin re-fetches the device inventory at each of these delays. The bridge doesn't list a new Pico until the user finishes pairing it in the Lutron app — so a single short delay misses slow pairers. Multiple staggered attempts cover both fast and slow flows without requiring a Homebridge restart. Defaults to [30, 90, 240].",
+            "default": [30, 90, 240],
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1800
+            }
           }
 
         }

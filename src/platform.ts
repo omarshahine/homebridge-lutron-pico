@@ -47,6 +47,13 @@ export interface GlobalOptions {
   // so users can silence presses without quieting the rest, or surface them
   // for automation setup without enabling global Homebridge debug.
   buttonPressLogging: ButtonPressLogLevel
+  // Seconds after a `/device/status/deviceheard` event at which to re-fetch
+  // the bridge's device inventory. A new Pico/sensor doesn't appear in the
+  // bridge's `/device` list until the user finishes the pairing flow in the
+  // Lutron app, so we run multiple delayed re-fetches to catch the device
+  // regardless of how long the user takes. Each entry is a fresh attempt
+  // measured from the moment `deviceheard` fired (not cumulative).
+  newDeviceRefreshDelaysSeconds: number[]
 }
 
 interface BridgeAuthEntry {
@@ -176,6 +183,12 @@ export class LutronCasetaLeap
         // restore the old chatty behavior, or 'silent' to drop them entirely.
         logLevel: 'normal',
         buttonPressLogging: 'debug',
+        // 30s/90s/240s after deviceheard. The first attempt covers the common
+        // case (user names+saves the device quickly); the later attempts
+        // cover slower users without requiring a Homebridge restart. Past
+        // ~4 min the user is probably stuck or distracted and a restart is
+        // the right intervention.
+        newDeviceRefreshDelaysSeconds: [30, 90, 240],
       },
       config.options,
     )
@@ -306,7 +319,16 @@ export class LutronCasetaLeap
     throw lastError
   }
 
+  // Wires up the per-bridge unsolicited listener and kicks off the first
+  // inventory scan. Called once per bridge connection. Subsequent re-scans
+  // (e.g., after deviceheard) use `refreshDeviceInventory` directly so we
+  // don't accumulate `unsolicited` listeners on every refresh.
   private processAllDevices(bridge: SmartBridge) {
+    bridge.on('unsolicited', this.handleUnsolicitedMessage.bind(this))
+    this.refreshDeviceInventory(bridge)
+  }
+
+  private refreshDeviceInventory(bridge: SmartBridge) {
     this.getDeviceInfoWithRetry(bridge).then(async (devices: DeviceDefinition[]) => {
       const results: PromiseSettledResult<string>[] = await Promise.allSettled(
         devices.map((device: DeviceDefinition) => this.processDevice(bridge, device)),
@@ -333,8 +355,6 @@ export class LutronCasetaLeap
       // may need to restart Homebridge if the bridge does not recover on its own.
       this.log.error('Failed to fetch device inventory after retries; skipping this scan. Restart Homebridge if the bridge does not recover on its own:', error)
     })
-
-    bridge.on('unsolicited', this.handleUnsolicitedMessage.bind(this))
   }
 
   async processDevice(bridge: SmartBridge, d: DeviceDefinition): Promise<string> {
@@ -465,10 +485,24 @@ export class LutronCasetaLeap
 
     if (response.CommuniqueType === 'UpdateResponse' && response.Header.Url === '/device/status/deviceheard') {
       const heardDevice = (response.Body! as OneDeviceStatus).DeviceStatus.DeviceHeard
-      this.log.info(`New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Triggering refresh in 30s.`)
       const bridge = this.bridgeMgr.get(bridgeID)
-      if (bridge !== undefined) {
-        setTimeout(() => this.processAllDevices(bridge), 30000)
+      if (bridge === undefined) {
+        return
+      }
+      const delays = this.options.newDeviceRefreshDelaysSeconds
+      this.log.info(
+        `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Scheduling inventory refreshes at ${delays.join('s/')}s.`,
+      )
+      // Schedule each retry independently from the moment deviceheard fired.
+      // The Lutron app's pairing flow can take anywhere from seconds to
+      // minutes depending on how much the user customizes (renaming, room
+      // assignment, association to other devices). One 30s timer is enough
+      // for fast pairers but misses the slow ones; staggering 3 attempts
+      // over ~4 minutes catches both without requiring a restart. Refreshes
+      // are idempotent — if the device shows up on the first attempt, the
+      // later attempts just re-confirm the existing inventory.
+      for (const seconds of delays) {
+        setTimeout(() => this.refreshDeviceInventory(bridge), seconds * 1000)
       }
     } else {
       this.emit('unsolicited', response)

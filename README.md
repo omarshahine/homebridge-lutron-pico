@@ -83,7 +83,7 @@ The defaults reflect a sane "production posture" — startup and per-device disc
 
 ### Adding and Removing Devices
 
-In order to add a device to the hub, you must use the Lutron app to pair the device. This plugin will re-scan the known devices 30 seconds after you announce the device. This means you must **complete adding the device in less than 30 seconds** in order for the device to appear in HomeKit without restarting the plugin. If you _do_ miss that deadline, don't worry: the device will appear after you restart Homebridge.
+In order to add a device to the hub, you must use the Lutron app to pair the device. When the bridge announces a new device, this plugin re-scans the known devices on a staggered schedule (by default at 30 s, 90 s, and 240 s after the announcement) so you have up to ~4 minutes to finish naming and assigning the device in the Lutron app before its discovery window closes. If you _do_ miss that window, don't worry: the device will appear after you restart Homebridge. The schedule is tunable via `options.newDeviceRefreshDelaysSeconds` if your pairing flow is consistently faster or slower.
 
 To remove a device from Homebridge after you're removed it from the Smart Bridge 2, you must [delete the cached accessory out of Homebridge manually](https://github.com/oznu/homebridge-config-ui-x/issues/525).
 
