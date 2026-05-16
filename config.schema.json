@@ -146,6 +146,21 @@
       "displayFlex": true,
       "items": [
         {
+          "key": "options.newDeviceRefreshDelaysSeconds",
+          "notitle": false,
+          "type": "array",
+          "flex": "1 1 400px",
+          "items": {
+            "type": "number"
+          }
+        }
+      ]
+    },
+    {
+      "type": "div",
+      "displayFlex": true,
+      "items": [
+        {
           "key": "enableMatter",
           "notitle": false,
           "type": "boolean",

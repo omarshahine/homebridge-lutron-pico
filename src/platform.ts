@@ -490,6 +490,17 @@ export class LutronCasetaLeap
         return
       }
       const delays = this.options.newDeviceRefreshDelaysSeconds
+      if (delays.length === 0) {
+        // An empty array is a valid way to opt out of auto-refresh (a power
+        // user might prefer to restart manually). Log explicitly so the
+        // behavior is debuggable — without this guard the info line below
+        // would render as "Scheduling inventory refreshes at s." (empty
+        // join), which is confusing.
+        this.log.warn(
+          `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. newDeviceRefreshDelaysSeconds is empty — no inventory refresh will be scheduled.`,
+        )
+        return
+      }
       this.log.info(
         `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Scheduling inventory refreshes at ${delays.join('s/')}s.`,
       )

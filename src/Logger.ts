@@ -116,5 +116,11 @@ export function logButtonPress(
     case 'silent':
       // intentionally drop
       break
+    default:
+      // Unrecognised value from a hand-edited config — fall back to info
+      // so presses remain visible rather than disappearing silently.
+      // Mirrors the defensive posture of createFilteredLogger above.
+      log.info(message, ...params)
+      break
   }
 }
