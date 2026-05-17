@@ -44,6 +44,14 @@ export type DeviceWireResult =
   | { kind: DeviceWireResultType.Skipped, reason: string }
   | { kind: DeviceWireResultType.Error, reason: string }
 
+// Delays in seconds after a /device/status/deviceheard event at which to
+// re-fetch the bridge's /device inventory. The bridge emits deviceheard the
+// instant it radios with a new Pico, but the Pico doesn't appear in /device
+// until the user finishes naming and assigning it in the Lutron app — which
+// can take seconds to minutes. Three staggered attempts over ~4 minutes
+// cover fast and slow pairers without forcing a Homebridge restart.
+const NEW_DEVICE_REFRESH_DELAYS_SECONDS = [30, 90, 240]
+
 const PICO_DEVICE_TYPES = new Set([
   'Pico2Button',
   'Pico2ButtonRaiseLower',
@@ -219,10 +227,23 @@ export class LutronPicoPlatform
   private handleUnsolicitedMessage(bridgeID: string, response: Response) {
     if (response.CommuniqueType === 'UpdateResponse' && response.Header.Url === '/device/status/deviceheard') {
       const heardDevice = (response.Body! as OneDeviceStatus).DeviceStatus.DeviceHeard
-      this.log.info(`New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Triggering refresh in 30s.`)
       const bridge = this.bridgeMgr.get(bridgeID)
-      if (bridge !== undefined) {
-        setTimeout(() => this.processAllDevices(bridge), 30000)
+      if (bridge === undefined) {
+        return
+      }
+      // The bridge emits deviceheard the moment it radios with a new Pico,
+      // but the Pico doesn't appear in the bridge's /device inventory until
+      // the user finishes naming and assigning it in the Lutron app. A single
+      // 30s timer covered the fast pairers but forced everyone else to
+      // restart Homebridge. Stagger three independent refresh attempts over
+      // ~4 minutes so both fast and slow flows self-heal without a restart.
+      // processAllDevices is idempotent; redundant runs just re-confirm the
+      // existing inventory.
+      this.log.info(
+        `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Scheduling inventory refreshes at ${NEW_DEVICE_REFRESH_DELAYS_SECONDS.join('s/')}s.`,
+      )
+      for (const seconds of NEW_DEVICE_REFRESH_DELAYS_SECONDS) {
+        setTimeout(() => this.processAllDevices(bridge), seconds * 1000)
       }
     } else {
       this.emit('unsolicited', response)
