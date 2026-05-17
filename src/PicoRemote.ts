@@ -145,13 +145,23 @@ export class PicoRemote {
       return { kind: DeviceWireResultType.Skipped, reason: `Pico is associated in Lutron app (${presetCheck.reason})` }
     }
 
-    this.accessory
-      .getService(this.platform.api.hap.Service.AccessoryInformation)!
+    const info = this.accessory.getService(this.platform.api.hap.Service.AccessoryInformation)!
+    info
       .setCharacteristic(this.platform.api.hap.Characteristic.Manufacturer, 'Lutron Electronics Co., Inc')
       .setCharacteristic(this.platform.api.hap.Characteristic.Model, this.accessory.context.device.ModelNumber)
       .setCharacteristic(this.platform.api.hap.Characteristic.Name, fullName)
-      .setCharacteristic(this.platform.api.hap.Characteristic.ConfiguredName, fullName)
       .setCharacteristic(this.platform.api.hap.Characteristic.SerialNumber, this.accessory.context.device.SerialNumber.toString())
+
+    // ConfiguredName is the user-mutable display name in the Home app.
+    // Set it from Lutron only on first registration; afterward leave it alone
+    // so any rename the user makes (via Home app or homeclaw-cli) persists
+    // across bridge restarts and deviceheard-triggered re-wires. The Name
+    // characteristic above stays in sync with the Lutron-side FullyQualifiedName
+    // as a fallback for HomeKit clients that don't honor ConfiguredName.
+    if (!this.accessory.context.configuredNameInitialized) {
+      info.setCharacteristic(this.platform.api.hap.Characteristic.ConfiguredName, fullName)
+      this.accessory.context.configuredNameInitialized = true
+    }
 
     const labelSvc = this.accessory.getService(this.platform.api.hap.Service.ServiceLabel)
       || this.accessory.addService(this.platform.api.hap.Service.ServiceLabel)
