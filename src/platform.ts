@@ -149,6 +149,15 @@ export class LutronPicoPlatform
       const bridge = new SmartBridge(bridgeID, client)
       bridge.setMaxListeners(400)
       this.bridgeMgr.set(bridge.bridgeID, bridge)
+      bridge.on('unsolicited', this.handleUnsolicitedMessage.bind(this))
+      // The bridge only pushes /device/status/deviceheard updates to clients
+      // that explicitly subscribe. Without this call, the bridge stays silent
+      // when a new Pico is paired and the inventory refresh below only runs
+      // once on startup — so new Picos require a Homebridge restart to appear.
+      // Re-subscribe on every reconnect because the LEAP client clears its
+      // subscription state when the socket closes.
+      this.subscribeToDeviceHeard(bridge)
+      bridge.on('disconnected', () => this.subscribeToDeviceHeard(bridge))
       this.processAllDevices(bridge)
     }
   }
@@ -168,8 +177,33 @@ export class LutronPicoPlatform
     }).catch((error) => {
       this.log.warn('Failed to fetch device inventory; skipping this scan:', error)
     })
+  }
 
-    bridge.on('unsolicited', this.handleUnsolicitedMessage.bind(this))
+  private subscribeToDeviceHeard(bridge: SmartBridge): void {
+    bridge.client.subscribe(
+      '/device/status/deviceheard',
+      (response: Response) => this.handleDeviceHeard(bridge, response),
+    ).then(() => {
+      this.log.debug(`Subscribed to /device/status/deviceheard on bridge ${bridge.bridgeID}`)
+    }).catch((e) => {
+      this.log.warn(
+        `Failed to subscribe to /device/status/deviceheard on bridge ${bridge.bridgeID}; `
+        + `new Picos will only be detected on the next Homebridge restart: ${e}`,
+      )
+    })
+  }
+
+  private handleDeviceHeard(bridge: SmartBridge, response: Response): void {
+    if (response.CommuniqueType !== 'UpdateResponse' || response.Header.Url !== '/device/status/deviceheard') {
+      return
+    }
+    const heardDevice = (response.Body! as OneDeviceStatus).DeviceStatus.DeviceHeard
+    this.log.info(
+      `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Scheduling inventory refreshes at ${NEW_DEVICE_REFRESH_DELAYS_SECONDS.join('s/')}s.`,
+    )
+    for (const seconds of NEW_DEVICE_REFRESH_DELAYS_SECONDS) {
+      setTimeout(() => this.processAllDevices(bridge), seconds * 1000)
+    }
   }
 
   private async processDevice(bridge: SmartBridge, d: DeviceDefinition): Promise<string> {
@@ -224,29 +258,10 @@ export class LutronPicoPlatform
     }
   }
 
-  private handleUnsolicitedMessage(bridgeID: string, response: Response) {
-    if (response.CommuniqueType === 'UpdateResponse' && response.Header.Url === '/device/status/deviceheard') {
-      const heardDevice = (response.Body! as OneDeviceStatus).DeviceStatus.DeviceHeard
-      const bridge = this.bridgeMgr.get(bridgeID)
-      if (bridge === undefined) {
-        return
-      }
-      // The bridge emits deviceheard the moment it radios with a new Pico,
-      // but the Pico doesn't appear in the bridge's /device inventory until
-      // the user finishes naming and assigning it in the Lutron app. A single
-      // 30s timer covered the fast pairers but forced everyone else to
-      // restart Homebridge. Stagger three independent refresh attempts over
-      // ~4 minutes so both fast and slow flows self-heal without a restart.
-      // processAllDevices is idempotent; redundant runs just re-confirm the
-      // existing inventory.
-      this.log.info(
-        `New ${heardDevice.DeviceType} s/n ${heardDevice.SerialNumber}. Scheduling inventory refreshes at ${NEW_DEVICE_REFRESH_DELAYS_SECONDS.join('s/')}s.`,
-      )
-      for (const seconds of NEW_DEVICE_REFRESH_DELAYS_SECONDS) {
-        setTimeout(() => this.processAllDevices(bridge), seconds * 1000)
-      }
-    } else {
-      this.emit('unsolicited', response)
-    }
+  private handleUnsolicitedMessage(_bridgeID: string, response: Response) {
+    // deviceheard responses are routed via the per-subscription callback
+    // (subscribeToDeviceHeard -> handleDeviceHeard) because the LEAP client
+    // tags subscription responses and only emits untagged messages here.
+    this.emit('unsolicited', response)
   }
 }
