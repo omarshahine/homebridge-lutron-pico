@@ -5,6 +5,10 @@
   "version": "1.0.0",
   "description": "Homebridge plugin that exposes only unassociated Lutron Pico remotes to HomeKit. Forked from homebridge-lutron-caseta-leap.",
   "license": "Apache-2.0",
+  "author": {
+    "name": "Omar Shahine",
+    "url": "https://github.com/omarshahine"
+  },
   "repository": {
     "type": "git",
     "url": "git://github.com/omarshahine/homebridge-lutron-pico.git"
@@ -12,6 +16,7 @@
   "bugs": {
     "url": "https://github.com/omarshahine/homebridge-lutron-pico/issues"
   },
+  "homepage": "https://github.com/omarshahine/homebridge-lutron-pico#readme",
   "keywords": [
     "homebridge-plugin",
     "lutron",
