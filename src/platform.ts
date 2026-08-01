@@ -82,6 +82,11 @@ export class LutronPicoPlatform
   private wiredBridges: Set<string> = new Set()
   // Pending wire retries, keyed by bridge, so a second chain is never started.
   private wireRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
+  // Bridges with a device scan in flight. processDevice awaits PicoRemote
+  // initialization between checking the accessory cache and registering, so two
+  // overlapping scans would each see a new Pico as unregistered and register it
+  // twice under the same UUID.
+  private wiringInFlight: Set<string> = new Set()
 
   constructor(public readonly log: Logging, public readonly config: PlatformConfig, public readonly api: API) {
     super()
@@ -189,6 +194,12 @@ export class LutronPicoPlatform
   }
 
   private processAllDevices(bridge: SmartBridge, retryIndex = 0) {
+    if (this.wiringInFlight.has(bridge.bridgeID)) {
+      this.log.debug(`Device setup already running for bridge ${bridge.bridgeID}; skipping overlapping scan.`)
+      return
+    }
+    this.wiringInFlight.add(bridge.bridgeID)
+
     bridge.getDeviceInfo().then(async (devices: DeviceDefinition[]) => {
       const results = await Promise.allSettled(
         devices.map(device => this.processDevice(bridge, device)),
@@ -205,6 +216,8 @@ export class LutronPicoPlatform
     }).catch((error) => {
       this.log.warn('Failed to fetch device inventory; skipping this scan:', error)
       this.scheduleDeviceWireRetry(bridge, retryIndex)
+    }).finally(() => {
+      this.wiringInFlight.delete(bridge.bridgeID)
     })
   }
 
@@ -227,6 +240,8 @@ export class LutronPicoPlatform
     }
 
     const seconds = DEVICE_WIRE_RETRY_DELAYS_SECONDS[retryIndex]
+    // Never leave an earlier handle running: it would fire into a second chain.
+    this.cancelDeviceWireRetry(bridge.bridgeID)
     this.log.info(
       `No Picos wired on bridge ${bridge.bridgeID}; retrying device setup in ${seconds}s `
       + `(attempt ${retryIndex + 2} of ${DEVICE_WIRE_RETRY_DELAYS_SECONDS.length + 1}).`,

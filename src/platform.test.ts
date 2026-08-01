@@ -107,6 +107,30 @@ describe('bridge rediscovery', () => {
     }
   })
 
+  // mDNS re-announces every 12-18s in the field, which is well inside the time
+  // it takes to wire a full inventory. processDevice awaits PicoRemote setup
+  // between checking the accessory cache and registering, so two overlapping
+  // scans would each treat a new Pico as unregistered and register it twice.
+  it('does not start an overlapping scan while device setup is still running', async () => {
+    let releaseInventory: (devices: unknown[]) => void = () => {}
+    getDeviceInfo.mockReturnValueOnce(new Promise((resolve) => {
+      releaseInventory = resolve
+    }))
+
+    const platform = makePlatform()
+
+    await platform.handleBridgeDiscovery(bridgeInfo)
+    await vi.waitFor(() => expect(getDeviceInfo).toHaveBeenCalledTimes(1))
+
+    // Rediscovery lands while the first inventory fetch is still outstanding.
+    await platform.handleBridgeDiscovery(bridgeInfo)
+    expect(getDeviceInfo).toHaveBeenCalledTimes(1)
+
+    releaseInventory([])
+    await vi.waitFor(() => expect(reconfigureBridge).toHaveBeenCalledTimes(1))
+    expect(getDeviceInfo).toHaveBeenCalledTimes(1)
+  })
+
   it('does not re-run device setup when the bridge is already wired', async () => {
     getDeviceInfo.mockResolvedValue([])
 
