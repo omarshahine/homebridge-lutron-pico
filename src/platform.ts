@@ -52,6 +52,14 @@ export type DeviceWireResult =
 // cover fast and slow pairers without forcing a Homebridge restart.
 const NEW_DEVICE_REFRESH_DELAYS_SECONDS = [30, 90, 240]
 
+// Delays in seconds before re-attempting the initial /device inventory fetch
+// after it fails. A bridge that is still booting refuses LEAP connections, and
+// Homebridge routinely wins that race after a power cut. Rediscovery alone does
+// not recover: mDNS re-announcements take the reconfiguration path, which
+// re-points the socket but never wires accessories. With no retry the Picos
+// stay dead until someone restarts Homebridge by hand.
+const DEVICE_WIRE_RETRY_DELAYS_SECONDS = [10, 30, 60, 120, 300, 300]
+
 const PICO_DEVICE_TYPES = new Set([
   'Pico2Button',
   'Pico2ButtonRaiseLower',
@@ -70,6 +78,10 @@ export class LutronPicoPlatform
   private finder: BridgeFinder | null = null
   private secrets: Map<string, BridgeAuthEntry>
   private bridgeMgr: Map<string, SmartBridge> = new Map()
+  // Bridges whose /device inventory has been fetched and wired at least once.
+  private wiredBridges: Set<string> = new Set()
+  // Pending wire retries, keyed by bridge, so a second chain is never started.
+  private wireRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
   constructor(public readonly log: Logging, public readonly config: PlatformConfig, public readonly api: API) {
     super()
@@ -142,9 +154,23 @@ export class LutronPicoPlatform
     const client = new LeapClient(bridgeInfo.ipAddr, LEAP_PORT, these.ca, these.key, these.cert)
 
     if (replaceClient) {
+      const bridge = this.bridgeMgr.get(bridgeID)!
       this.log.info('Bridge', bridgeInfo.bridgeid, 'entering reconfiguration')
-      await this.bridgeMgr.get(bridgeID)!.reconfigureBridge(client)
+      await bridge.reconfigureBridge(client)
       this.log.info('Bridge', bridgeInfo.bridgeid, 'exit reconfiguration')
+
+      // Reconfiguration re-points the socket but leaves accessories alone,
+      // which is right when they were wired successfully: each PicoRemote
+      // re-subscribes its buttons off the bridge's 'disconnected' event. If the
+      // inventory fetch never succeeded there are no PicoRemotes to do that, so
+      // a healthy-looking bridge would sit here with every Pico unsubscribed.
+      // A completed reconfiguration is live proof the bridge is reachable, so
+      // supersede any backoff timer rather than waiting it out.
+      if (!this.wiredBridges.has(bridgeID)) {
+        this.cancelDeviceWireRetry(bridgeID)
+        this.log.info('Bridge', bridgeInfo.bridgeid, 'has no wired Picos; retrying device setup')
+        this.processAllDevices(bridge)
+      }
     } else {
       const bridge = new SmartBridge(bridgeID, client)
       bridge.setMaxListeners(400)
@@ -162,7 +188,7 @@ export class LutronPicoPlatform
     }
   }
 
-  private processAllDevices(bridge: SmartBridge) {
+  private processAllDevices(bridge: SmartBridge, retryIndex = 0) {
     bridge.getDeviceInfo().then(async (devices: DeviceDefinition[]) => {
       const results = await Promise.allSettled(
         devices.map(device => this.processDevice(bridge, device)),
@@ -174,9 +200,51 @@ export class LutronPicoPlatform
           this.log.error(`Failed to process device: ${result.reason}`)
         }
       }
+      this.wiredBridges.add(bridge.bridgeID)
+      this.cancelDeviceWireRetry(bridge.bridgeID)
     }).catch((error) => {
       this.log.warn('Failed to fetch device inventory; skipping this scan:', error)
+      this.scheduleDeviceWireRetry(bridge, retryIndex)
     })
+  }
+
+  private scheduleDeviceWireRetry(bridge: SmartBridge, retryIndex: number): void {
+    // Only the never-wired case is an outage. Once a bridge has been wired its
+    // Picos keep working through reconnects, so a failed refresh (a deviceheard
+    // scan, say) can wait for the next natural trigger.
+    if (this.wiredBridges.has(bridge.bridgeID)) {
+      return
+    }
+
+    if (retryIndex >= DEVICE_WIRE_RETRY_DELAYS_SECONDS.length) {
+      this.cancelDeviceWireRetry(bridge.bridgeID)
+      this.log.error(
+        `Could not fetch the device inventory for bridge ${bridge.bridgeID} after `
+        + `${DEVICE_WIRE_RETRY_DELAYS_SECONDS.length + 1} attempts. No Pico on this bridge will `
+        + `reach HomeKit. Check that the bridge is powered and reachable, then restart Homebridge.`,
+      )
+      return
+    }
+
+    const seconds = DEVICE_WIRE_RETRY_DELAYS_SECONDS[retryIndex]
+    this.log.info(
+      `No Picos wired on bridge ${bridge.bridgeID}; retrying device setup in ${seconds}s `
+      + `(attempt ${retryIndex + 2} of ${DEVICE_WIRE_RETRY_DELAYS_SECONDS.length + 1}).`,
+    )
+    const timer = setTimeout(() => {
+      this.wireRetryTimers.delete(bridge.bridgeID)
+      this.processAllDevices(bridge, retryIndex + 1)
+    }, seconds * 1000)
+    timer.unref?.()
+    this.wireRetryTimers.set(bridge.bridgeID, timer)
+  }
+
+  private cancelDeviceWireRetry(bridgeID: string): void {
+    const timer = this.wireRetryTimers.get(bridgeID)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this.wireRetryTimers.delete(bridgeID)
+    }
   }
 
   private subscribeToDeviceHeard(bridge: SmartBridge): void {
