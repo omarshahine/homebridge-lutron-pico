@@ -58,6 +58,9 @@ function makePlatform() {
 
 const bridgeInfo = { bridgeid: BRIDGE_ID, ipAddr: '192.168.1.175' } as any
 
+// A healthy bridge always lists at least itself, so a real inventory is never empty.
+const INVENTORY = [{ DeviceType: 'SmartBridge', FullyQualifiedName: ['Smart Bridge'] }]
+
 describe('bridge rediscovery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -72,7 +75,7 @@ describe('bridge rediscovery', () => {
   it('re-runs device setup when the first inventory fetch failed', async () => {
     getDeviceInfo
       .mockRejectedValueOnce(new Error('connect ECONNREFUSED 192.168.1.175:8081'))
-      .mockResolvedValue([])
+      .mockResolvedValue(INVENTORY)
 
     const platform = makePlatform()
 
@@ -89,7 +92,7 @@ describe('bridge rediscovery', () => {
     try {
       getDeviceInfo
         .mockRejectedValueOnce(new Error('connect ECONNREFUSED 192.168.1.175:8081'))
-        .mockResolvedValue([])
+        .mockResolvedValue(INVENTORY)
 
       const platform = makePlatform()
 
@@ -126,13 +129,38 @@ describe('bridge rediscovery', () => {
     await platform.handleBridgeDiscovery(bridgeInfo)
     expect(getDeviceInfo).toHaveBeenCalledTimes(1)
 
-    releaseInventory([])
+    releaseInventory(INVENTORY)
     await vi.waitFor(() => expect(reconfigureBridge).toHaveBeenCalledTimes(1))
     expect(getDeviceInfo).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: a booting bridge can refuse /device, and lutron-leap swallows
+  // that and resolves an empty list instead of rejecting. Counting that as
+  // wired left every Pico unsubscribed for two weeks at the cabin, because
+  // neither the retry timer nor rediscovery re-run setup on a wired bridge.
+  it('treats an empty inventory as a failed fetch and retries', async () => {
+    vi.useFakeTimers()
+    try {
+      getDeviceInfo
+        .mockResolvedValueOnce([])
+        .mockResolvedValue(INVENTORY)
+
+      const platform = makePlatform()
+
+      await platform.handleBridgeDiscovery(bridgeInfo)
+      await vi.waitFor(() => expect(getDeviceInfo).toHaveBeenCalledTimes(1))
+      expect(platform.wiredBridges.has(BRIDGE_ID)).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(2)
+      expect(platform.wiredBridges.has(BRIDGE_ID)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not re-run device setup when the bridge is already wired', async () => {
-    getDeviceInfo.mockResolvedValue([])
+    getDeviceInfo.mockResolvedValue(INVENTORY)
 
     const platform = makePlatform()
 
