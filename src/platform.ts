@@ -201,6 +201,13 @@ export class LutronPicoPlatform
     this.wiringInFlight.add(bridge.bridgeID)
 
     bridge.getDeviceInfo().then(async (devices: DeviceDefinition[]) => {
+      // lutron-leap swallows a failed /device read (e.g. ECONNREFUSED while the
+      // bridge boots) and resolves an empty list. A live bridge always lists at
+      // least itself, so treat empty as a failed fetch; marking it wired would
+      // stop every retry path and leave all Picos unsubscribed.
+      if (devices.length === 0) {
+        throw new Error('bridge returned an empty device inventory (still booting?)')
+      }
       const results = await Promise.allSettled(
         devices.map(device => this.processDevice(bridge, device)),
       )
