@@ -66,7 +66,7 @@ If 1-2 pass but 3 doesn't appear, the config.json platform alias doesn't match t
 
 The cabin Homebridge host is reached through Cloudflare Tunnel + Access (Tailscale is retired for this host). SSH with `ssh hb-cabin` (an `~/.ssh/config` alias for `root@ssh-cabin.shahine.com` that proxies through `cloudflared access ssh` with a service token). The Homebridge UI is at https://homebridge-cabin.shahine.com (Cloudflare Access login). Node lives at `/opt/homebridge/bin/node`. Plugins live at `/var/lib/homebridge/node_modules/`; the log is `/var/lib/homebridge/homebridge.log`.
 
-A Pico press that reaches the plugin always logs `[Lutron Pico] Button press on <name> (/button/N)` at info level. If presses produce no such line, check the most recent startup for `Device setup finished: Restoring Pico from cache: ...`. If that line is missing, the Picos were never subscribed, and a Homebridge restart re-wires them.
+A press on a known button logs `[Lutron Pico] Button press on <name> (/button/N)` at info level; a press on an unknown button href logs a `Got button event for unknown href` warning instead. If a press produces neither, check the most recent startup for the affected Pico's setup line: `Device setup finished: Restoring Pico from cache: <name>` or `Device setup finished: Adding new Pico: <name>`. If neither appears, look for `Failed to fetch device inventory` / `No Picos wired ... retrying` lines before deciding to restart Homebridge, which re-runs device setup.
 
 `homeclaw-cli search <name>` (locally on the user's mac) is the fastest way to verify accessory reachability across all Homebridge hosts — it queries HomeKit directly rather than going through the Homebridge UI.
 
