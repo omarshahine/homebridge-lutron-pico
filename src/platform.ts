@@ -239,7 +239,11 @@ export class LutronPicoPlatform
     }).finally(() => {
       this.wiringInFlight.delete(bridge.bridgeID)
       if (this.rescanRequested.delete(bridge.bridgeID) && !this.wiredBridges.has(bridge.bridgeID)) {
-        this.processAllDevices(bridge, retryIndex)
+        // This scan failed. The queued rescan takes the place of the retry it
+        // just scheduled and advances the backoff, so repeated hangs still
+        // reach the give-up message instead of looping at the same delay.
+        this.cancelDeviceWireRetry(bridge.bridgeID)
+        this.processAllDevices(bridge, retryIndex + 1)
       }
     })
   }

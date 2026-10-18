@@ -187,6 +187,57 @@ describe('bridge rediscovery', () => {
     }
   })
 
+  it('retries a timed-out fetch on the backoff timer', async () => {
+    vi.useFakeTimers()
+    try {
+      getDeviceInfo
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValue(INVENTORY)
+
+      const platform = makePlatform()
+
+      await platform.handleBridgeDiscovery(bridgeInfo)
+      await vi.waitFor(() => expect(getDeviceInfo).toHaveBeenCalledTimes(1))
+
+      // Timeout fires at 30s; with nothing queued, the next try waits for the timer.
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(1)
+      expect(platform.wiredBridges.has(BRIDGE_ID)).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(2)
+      expect(platform.wiredBridges.has(BRIDGE_ID)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('advances the backoff when a queued rescan replaces a retry', async () => {
+    vi.useFakeTimers()
+    try {
+      getDeviceInfo.mockReturnValue(new Promise(() => {}))
+
+      const platform = makePlatform()
+
+      await platform.handleBridgeDiscovery(bridgeInfo)
+      await vi.waitFor(() => expect(getDeviceInfo).toHaveBeenCalledTimes(1))
+      await platform.handleBridgeDiscovery(bridgeInfo)
+
+      // First scan times out; the queued rescan starts at once (attempt 2).
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(2)
+
+      // That one times out at 60s and must wait the attempt-2 delay (30s),
+      // not restart the 10s delay.
+      await vi.advanceTimersByTimeAsync(30_000 + 10_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not re-run device setup when the bridge is already wired', async () => {
     getDeviceInfo.mockResolvedValue(INVENTORY)
 
