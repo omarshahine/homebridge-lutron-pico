@@ -51,18 +51,16 @@ Each button fires `SINGLE_PRESS` in HomeKit on every physical press. Wire it int
 
 ## Installation
 
-Until I publish to npm, install from a local tarball:
+This plugin isn't on npm. Install a tagged release straight from GitHub on your Homebridge host (npm builds `dist/` during install):
 
 ```sh
-git clone https://github.com/omarshahine/homebridge-lutron-pico.git
-cd homebridge-lutron-pico
-npm install
-npm run build
-npm pack
-# then on your Homebridge host:
-sudo -u homebridge npm install --prefix /var/lib/homebridge --omit=dev /path/to/homebridge-lutron-pico-1.0.0.tgz
+export PATH=/opt/homebridge/bin:$PATH   # hb-service hosts keep node/npm here
+cd /var/lib/homebridge
+npm install --no-save --unsafe-perm github:omarshahine/homebridge-lutron-pico#v1.0.1
 sudo systemctl restart homebridge
 ```
+
+Swap `v1.0.1` for the latest tag on the [releases page](https://github.com/omarshahine/homebridge-lutron-pico/releases), or use `#main` for unreleased fixes. `--unsafe-perm` is required: without it, npm drops privileges and the build step fails silently, leaving no `dist/`.
 
 Once installed, the plugin shows up in the Homebridge UI X plugin list as **Lutron Pico**.
 
