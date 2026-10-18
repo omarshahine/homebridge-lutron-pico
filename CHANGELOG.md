@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.0.1 - 2026-10-17
+
 ### Fixed
 
+- A hung `/device` inventory fetch no longer wedges device setup. After the
+  2026-10-17 power cut, a scan started during bridge reconfiguration never
+  settled, and the overlap guard silently dropped every later retry, so the
+  Picos stayed dead until Homebridge was restarted. Each fetch now times out
+  after 30s, and a scan requested while another is running is queued and
+  re-run afterward (advancing the backoff) instead of dropped.
 - An empty device inventory now counts as a failed fetch and is retried. When
   Homebridge started before the Caseta bridge after a power cut, `lutron-leap`
   swallowed the refused `/device` read and returned an empty list. The plugin
