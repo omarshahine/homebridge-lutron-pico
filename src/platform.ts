@@ -60,6 +60,13 @@ const NEW_DEVICE_REFRESH_DELAYS_SECONDS = [30, 90, 240]
 // stay dead until someone restarts Homebridge by hand.
 const DEVICE_WIRE_RETRY_DELAYS_SECONDS = [10, 30, 60, 120, 300, 300]
 
+// Upper bound on one /device inventory fetch. A request issued while the bridge
+// is mid-reboot or mid-reconfiguration can be left with no reply and no error.
+// Without a deadline that scan stays in flight forever, the overlap guard
+// silently drops every later retry, and the Picos stay dead until Homebridge is
+// restarted by hand (seen at the cabin after the 2026-10-17 power cut).
+const DEVICE_FETCH_TIMEOUT_MS = 30_000
+
 const PICO_DEVICE_TYPES = new Set([
   'Pico2Button',
   'Pico2ButtonRaiseLower',
@@ -87,6 +94,11 @@ export class LutronPicoPlatform
   // overlapping scans would each see a new Pico as unregistered and register it
   // twice under the same UUID.
   private wiringInFlight: Set<string> = new Set()
+
+  // Bridges that asked for a scan while one was already running. Dropping
+  // those requests lost the reconfiguration-triggered rescan after a power cut,
+  // so the Picos never wired; instead, re-run once the current scan settles.
+  private rescanRequested: Set<string> = new Set()
 
   constructor(public readonly log: Logging, public readonly config: PlatformConfig, public readonly api: API) {
     super()
@@ -195,12 +207,13 @@ export class LutronPicoPlatform
 
   private processAllDevices(bridge: SmartBridge, retryIndex = 0) {
     if (this.wiringInFlight.has(bridge.bridgeID)) {
-      this.log.debug(`Device setup already running for bridge ${bridge.bridgeID}; skipping overlapping scan.`)
+      this.log.debug(`Device setup already running for bridge ${bridge.bridgeID}; will rescan when it finishes.`)
+      this.rescanRequested.add(bridge.bridgeID)
       return
     }
     this.wiringInFlight.add(bridge.bridgeID)
 
-    bridge.getDeviceInfo().then(async (devices: DeviceDefinition[]) => {
+    withTimeout(bridge.getDeviceInfo(), DEVICE_FETCH_TIMEOUT_MS, 'device inventory fetch').then(async (devices: DeviceDefinition[]) => {
       // lutron-leap swallows a failed /device read (e.g. ECONNREFUSED while the
       // bridge boots) and resolves an empty list. A live bridge always lists at
       // least itself, so treat empty as a failed fetch; marking it wired would
@@ -225,6 +238,9 @@ export class LutronPicoPlatform
       this.scheduleDeviceWireRetry(bridge, retryIndex)
     }).finally(() => {
       this.wiringInFlight.delete(bridge.bridgeID)
+      if (this.rescanRequested.delete(bridge.bridgeID) && !this.wiredBridges.has(bridge.bridgeID)) {
+        this.processAllDevices(bridge, retryIndex)
+      }
     })
   }
 
@@ -354,4 +370,21 @@ export class LutronPicoPlatform
     // tags subscription responses and only emits untagged messages here.
     this.emit('unsolicited', response)
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms / 1000}s`)), ms)
+    timer.unref?.()
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }

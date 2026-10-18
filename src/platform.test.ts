@@ -159,6 +159,34 @@ describe('bridge rediscovery', () => {
     }
   })
 
+  // Regression: after the 2026-10-17 power cut a fetch issued during
+  // reconfiguration never settled, so the overlap guard dropped every retry and
+  // the Picos stayed dead until a manual restart. A hung fetch must time out
+  // into the normal retry chain.
+  it('times out a hung inventory fetch and retries', async () => {
+    vi.useFakeTimers()
+    try {
+      getDeviceInfo
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValue(INVENTORY)
+
+      const platform = makePlatform()
+
+      await platform.handleBridgeDiscovery(bridgeInfo)
+      await vi.waitFor(() => expect(getDeviceInfo).toHaveBeenCalledTimes(1))
+
+      // Overlap guard still holds while the first fetch is outstanding.
+      await platform.handleBridgeDiscovery(bridgeInfo)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(30_000 + 10_000)
+      expect(getDeviceInfo).toHaveBeenCalledTimes(2)
+      expect(platform.wiredBridges.has(BRIDGE_ID)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not re-run device setup when the bridge is already wired', async () => {
     getDeviceInfo.mockResolvedValue(INVENTORY)
 
